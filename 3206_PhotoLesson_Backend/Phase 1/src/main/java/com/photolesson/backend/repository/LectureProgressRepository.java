@@ -16,4 +16,6 @@ public interface LectureProgressRepository extends JpaRepository<LectureProgress
 
     @Query("SELECT COUNT(lp) FROM LectureProgress lp WHERE lp.member.id = :memberId")
     long countByMemberId(@Param("memberId") Long memberId);
+
+    List<LectureProgress> findByMemberId(Long memberId);
 }

@@ -90,6 +90,20 @@ public class LectureService {
                 .build();
     }
 
+    public List<WatchHistoryResponse> getWatchHistory(Long memberId) {
+        List<LectureProgress> progressList = lectureProgressRepository.findByMemberId(memberId);
+
+        return progressList.stream()
+                .map(progress -> WatchHistoryResponse.builder()
+                        .progressId(progress.getId())
+                        .lectureId(progress.getLecture().getId())
+                        .memberId(progress.getMember().getId())
+                        .lastPosition(progress.getLastPosition())
+                        .updatedAt(progress.getUpdatedAt())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
     private LectureDto toLectureDto(Lecture lecture) {
         return LectureDto.builder()
                 .lectureId(lecture.getId())

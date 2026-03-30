@@ -45,4 +45,10 @@ public class LectureController {
         WatchHistoryResponse response = lectureService.saveWatchHistory(lectureId, memberId, request);
         return ResponseEntity.ok(response);
     }
+
+    @GetMapping("/users/{userId}/watch-history")
+    public ResponseEntity<List<WatchHistoryResponse>> getWatchHistory(@PathVariable Long userId) {
+        List<WatchHistoryResponse> history = lectureService.getWatchHistory(userId);
+        return ResponseEntity.ok(history);
+    }
 }

@@ -8,7 +8,7 @@ import lombok.*;
 @AllArgsConstructor
 @Builder
 public class UserProgressDto {
-    private Boolean isEnrolled;
+    private Long enrollmentId;
     private Integer completedLectures;
     private Integer totalLectures;
     private Double progressPercent;

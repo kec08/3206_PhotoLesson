@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -82,15 +83,15 @@ public class CourseService {
 
         UserProgressDto userProgress = null;
         if (memberId != null) {
-            boolean isEnrolled = enrollmentRepository.existsByMemberIdAndCourseId(memberId, courseId);
-            if (isEnrolled) {
+            Optional<Enrollment> enrollmentOpt = enrollmentRepository.findByMemberIdAndCourseId(memberId, courseId);
+            if (enrollmentOpt.isPresent()) {
                 long totalLectures = lectureRepository.countByCourseId(courseId);
                 List<LectureProgress> progressList = lectureProgressRepository.findByMemberIdAndCourseId(memberId, courseId);
                 int completedLectures = progressList.size();
                 double progressPercent = totalLectures > 0 ? (double) completedLectures / totalLectures * 100 : 0;
 
                 userProgress = UserProgressDto.builder()
-                        .isEnrolled(true)
+                        .enrollmentId(enrollmentOpt.get().getId())
                         .completedLectures(completedLectures)
                         .totalLectures((int) totalLectures)
                         .progressPercent(Math.round(progressPercent * 100.0) / 100.0)

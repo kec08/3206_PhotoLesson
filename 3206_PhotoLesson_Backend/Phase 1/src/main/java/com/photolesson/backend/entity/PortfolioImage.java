@@ -29,6 +29,9 @@ public class PortfolioImage {
     @Column(name = "thumbnail_url", length = 500)
     private String thumbnailUrl;
 
+    @Column(name = "file_size")
+    private Long fileSize;
+
     @CreationTimestamp
     @Column(name = "uploaded_at")
     private LocalDateTime uploadedAt;

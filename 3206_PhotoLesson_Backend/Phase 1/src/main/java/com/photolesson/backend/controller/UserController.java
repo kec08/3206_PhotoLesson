@@ -1,6 +1,7 @@
 package com.photolesson.backend.controller;
 
 import com.photolesson.backend.dto.user.UserDto;
+import com.photolesson.backend.dto.user.UserUpdateRequest;
 import com.photolesson.backend.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +17,13 @@ public class UserController {
     @GetMapping("/{userId}")
     public ResponseEntity<UserDto> getUser(@PathVariable Long userId) {
         UserDto user = userService.getUserById(userId);
+        return ResponseEntity.ok(user);
+    }
+
+    @PutMapping("/{userId}")
+    public ResponseEntity<UserDto> updateUser(@PathVariable Long userId,
+                                              @RequestBody UserUpdateRequest request) {
+        UserDto user = userService.updateUser(userId, request);
         return ResponseEntity.ok(user);
     }
 }

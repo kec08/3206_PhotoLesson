@@ -100,6 +100,7 @@ public class PortfolioService {
                     .portfolio(portfolio)
                     .imageUrl(imageUrl)
                     .thumbnailUrl(imageUrl)
+                    .fileSize(file.getSize())
                     .build();
 
             image = portfolioImageRepository.save(image);
@@ -141,6 +142,7 @@ public class PortfolioService {
                 .portfolioId(image.getPortfolio().getId())
                 .imageUrl(image.getImageUrl())
                 .thumbnailUrl(image.getThumbnailUrl())
+                .fileSize(image.getFileSize())
                 .uploadedAt(image.getUploadedAt())
                 .build();
     }

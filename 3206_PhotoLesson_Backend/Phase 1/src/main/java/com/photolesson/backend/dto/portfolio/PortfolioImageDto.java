@@ -14,5 +14,6 @@ public class PortfolioImageDto {
     private Long portfolioId;
     private String imageUrl;
     private String thumbnailUrl;
+    private Long fileSize;
     private LocalDateTime uploadedAt;
 }

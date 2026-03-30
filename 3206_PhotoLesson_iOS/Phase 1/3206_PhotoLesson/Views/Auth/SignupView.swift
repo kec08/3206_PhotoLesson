@@ -98,8 +98,10 @@ struct SignupView: View {
             showSuccess = true
         } catch let error as APIError {
             errorMessage = error.errorDescription
+            print("회원가입 APIError: \(error)")
         } catch {
-            errorMessage = "회원가입에 실패했습니다."
+            errorMessage = "회원가입 실패: \(error.localizedDescription)"
+            print("회원가입 에러: \(error)")
         }
         isLoading = false
     }

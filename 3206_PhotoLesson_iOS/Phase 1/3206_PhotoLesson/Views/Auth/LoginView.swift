@@ -85,11 +85,14 @@ struct LoginView: View {
         errorMessage = nil
         do {
             let response = try await APIService.shared.login(email: email, password: password)
+            print("로그인 성공: userId=\(response.userId), token=\(response.accessToken.prefix(20))...")
             authManager.saveLoginInfo(response: response)
         } catch let error as APIError {
             errorMessage = error.errorDescription
+            print("로그인 APIError: \(error)")
         } catch {
-            errorMessage = "로그인에 실패했습니다."
+            errorMessage = "로그인 실패: \(error.localizedDescription)"
+            print("로그인 에러: \(error)")
         }
         isLoading = false
     }
