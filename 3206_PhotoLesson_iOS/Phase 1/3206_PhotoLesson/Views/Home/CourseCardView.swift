@@ -19,7 +19,7 @@ struct CourseCardView: View {
                     thumbnailPlaceholder
                 }
             }
-            .frame(height: 210)
+            .frame(height: 200)
             .clipped()
 
             // 정보 영역

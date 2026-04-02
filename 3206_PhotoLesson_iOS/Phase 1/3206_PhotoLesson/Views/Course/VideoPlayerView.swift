@@ -9,35 +9,37 @@ struct YouTubePlayerView: UIViewRepresentable {
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
         let webView = WKWebView(frame: .zero, configuration: config)
-        webView.scrollView.isScrollEnabled = false
+        webView.scrollView.isScrollEnabled = true
+        webView.isOpaque = false
+        webView.backgroundColor = .black
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        let embedURL = convertToEmbedURL(videoURL)
-        if let url = URL(string: embedURL) {
+        let mobileURL = convertToMobileURL(videoURL)
+        if let url = URL(string: mobileURL) {
             webView.load(URLRequest(url: url))
         }
     }
 
-    /// youtube.com/watch?v=ID → youtube.com/embed/ID 변환
-    private func convertToEmbedURL(_ urlString: String) -> String {
-        // 이미 embed URL이면 그대로
-        if urlString.contains("/embed/") { return urlString }
+    private func convertToMobileURL(_ urlString: String) -> String {
+        let videoId = extractVideoId(from: urlString)
+        return "https://m.youtube.com/watch?v=\(videoId)"
+    }
 
-        // watch?v=ID 형식 → embed/ID
-        if urlString.contains("watch?v="),
-           let videoId = URLComponents(string: urlString)?
-            .queryItems?.first(where: { $0.name == "v" })?.value {
-            return "https://www.youtube.com/embed/\(videoId)?playsinline=1"
+    private func extractVideoId(from urlString: String) -> String {
+        if let components = URLComponents(string: urlString),
+           let videoId = components.queryItems?.first(where: { $0.name == "v" })?.value {
+            return videoId
         }
-
-        // youtu.be/ID 형식 → embed/ID
         if urlString.contains("youtu.be/"),
            let videoId = urlString.split(separator: "/").last {
-            return "https://www.youtube.com/embed/\(videoId)?playsinline=1"
+            return String(videoId)
         }
-
+        if urlString.contains("/embed/"),
+           let videoId = urlString.split(separator: "/").last?.split(separator: "?").first {
+            return String(videoId)
+        }
         return urlString
     }
 }
@@ -50,28 +52,28 @@ struct VideoPlayerView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(spacing: 0) {
-            // YouTube 웹뷰
-            if let videoUrl = lecture.videoUrl, !videoUrl.isEmpty {
-                YouTubePlayerView(videoURL: videoUrl)
-                    .frame(height: 220)
-            } else {
-                Rectangle()
-                    .fill(Color.black)
-                    .frame(height: 220)
-                    .overlay {
-                        VStack(spacing: 12) {
-                            Image(systemName: "play.circle.fill")
-                                .font(.system(size: 60))
-                                .foregroundStyle(.white.opacity(0.8))
-                            Text("영상 준비 중")
-                                .foregroundStyle(.white.opacity(0.8))
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                // YouTube 영상
+                if let videoUrl = lecture.videoUrl, !videoUrl.isEmpty {
+                    YouTubePlayerView(videoURL: videoUrl)
+                        .frame(height: 350)
+                } else {
+                    Rectangle()
+                        .fill(Color.black)
+                        .frame(height: 350)
+                        .overlay {
+                            VStack(spacing: 12) {
+                                Image(systemName: "play.circle.fill")
+                                    .font(.system(size: 60))
+                                    .foregroundStyle(.white.opacity(0.8))
+                                Text("영상 준비 중")
+                                    .foregroundStyle(.white.opacity(0.8))
+                            }
                         }
-                    }
-            }
+                }
 
-            // 레슨 정보
-            ScrollView {
+                // 레슨 정보
                 VStack(alignment: .leading, spacing: 16) {
                     Text(lecture.title)
                         .font(.title3)
@@ -96,7 +98,7 @@ struct VideoPlayerView: View {
                         Label("시청 완료", systemImage: "checkmark.circle")
                             .font(.system(size: 17, weight: .bold))
                             .frame(maxWidth: .infinity)
-                            .frame(height: 52)
+                            .frame(height: 56)
                             .background(Color.mainCoral)
                             .foregroundStyle(.white)
                             .cornerRadius(14)

@@ -90,39 +90,81 @@ struct CoursePlayerView: View {
     @State private var course: CourseDetail?
     @State private var isLoading = true
     @State private var selectedLecture: Lecture?
+    @State private var showPlaylist = false
 
     var body: some View {
-        VStack(spacing: 0) {
+        ZStack(alignment: .bottom) {
             if isLoading {
                 ProgressView()
-                    .frame(maxHeight: .infinity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let course = course {
-                // 상단: 선택된 영상 or 첫 번째 영상
-                if let lecture = selectedLecture ?? firstLecture(course) {
-                    VideoPlayerView(lecture: lecture, courseTitle: course.title)
-                        .frame(height: 280)
+                VStack(spacing: 0) {
+                    // 영상 영역
+                    if let lecture = selectedLecture ?? firstLecture(course) {
+                        VideoPlayerView(lecture: lecture, courseTitle: course.title)
+                    }
                 }
 
-                // 하단: 강의 목록 (재생목록)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(course.title)
-                            .font(.system(size: 18, weight: .bold))
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
+                // 하단 재생목록 버튼
+                if !showPlaylist {
+                    VStack {
+                        Spacer()
+                        Button {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                showPlaylist = true
+                            }
+                        } label: {
+                            HStack {
+                                Image(systemName: "list.bullet")
+                                Text("재생목록")
+                                    .font(.system(size: 15, weight: .semibold))
+                                Spacer()
+                                let total = course.sections.reduce(0) { $0 + ($1.lectures?.count ?? 0) }
+                                Text("\(total)개 강의")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(.secondary)
+                                Image(systemName: "chevron.up")
+                            }
+                            .foregroundStyle(.primary)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 16)
+                            .background(.ultraThinMaterial)
+                            .cornerRadius(16)
+                            .shadow(color: .black.opacity(0.1), radius: 10, y: -2)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 16)
+                    }
+                }
+            }
+        }
+        .navigationTitle("강의")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await loadCourse() }
+        .sheet(isPresented: $showPlaylist) {
+            playlistSheet
+        }
+    }
 
+    // MARK: - 재생목록 시트
+    private var playlistSheet: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    if let course = course {
                         ForEach(course.sections) { section in
                             VStack(alignment: .leading, spacing: 0) {
                                 Text(section.title)
                                     .font(.system(size: 14, weight: .semibold))
                                     .foregroundStyle(.secondary)
                                     .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
+                                    .padding(.vertical, 10)
 
                                 if let lectures = section.lectures {
                                     ForEach(lectures) { lecture in
                                         Button {
                                             selectedLecture = lecture
+                                            showPlaylist = false
                                         } label: {
                                             HStack(spacing: 12) {
                                                 Image(systemName: selectedLecture?.lectureId == lecture.lectureId ? "play.circle.fill" : "play.circle")
@@ -131,8 +173,9 @@ struct CoursePlayerView: View {
 
                                                 VStack(alignment: .leading, spacing: 2) {
                                                     Text(lecture.title)
-                                                        .font(.system(size: 14, weight: selectedLecture?.lectureId == lecture.lectureId ? .bold : .regular))
+                                                        .font(.system(size: 15, weight: selectedLecture?.lectureId == lecture.lectureId ? .bold : .regular))
                                                         .foregroundStyle(selectedLecture?.lectureId == lecture.lectureId ? Color.mainCoral : .primary)
+                                                        .multilineTextAlignment(.leading)
                                                     Text(lecture.formattedPlayTime)
                                                         .font(.caption)
                                                         .foregroundStyle(.secondary)
@@ -141,7 +184,7 @@ struct CoursePlayerView: View {
                                                 Spacer()
                                             }
                                             .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
+                                            .padding(.vertical, 12)
                                             .background(selectedLecture?.lectureId == lecture.lectureId ? Color.mainCoral.opacity(0.08) : Color.clear)
                                         }
 
@@ -153,10 +196,18 @@ struct CoursePlayerView: View {
                     }
                 }
             }
+            .navigationTitle("재생목록")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("닫기") {
+                        showPlaylist = false
+                    }
+                }
+            }
         }
-        .navigationTitle("강의")
-        .navigationBarTitleDisplayMode(.inline)
-        .task { await loadCourse() }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 
     private func firstLecture(_ course: CourseDetail) -> Lecture? {
@@ -166,7 +217,6 @@ struct CoursePlayerView: View {
     private func loadCourse() async {
         do {
             course = try await APIService.shared.getCourseDetail(courseId: courseId)
-            // 첫 번째 강의 자동 선택
             if let first = course.flatMap({ firstLecture($0) }) {
                 selectedLecture = first
             }
