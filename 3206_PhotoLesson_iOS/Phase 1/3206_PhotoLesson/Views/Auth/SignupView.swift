@@ -11,67 +11,81 @@ struct SignupView: View {
     @State private var showSuccess = false
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                VStack(spacing: 8) {
-                    Image(systemName: "person.badge.plus")
-                        .font(.system(size: 50))
-                        .foregroundStyle(.blue)
-                    Text("회원가입")
-                        .font(.title)
-                        .fontWeight(.bold)
-                }
-                .padding(.top, 40)
+        ZStack {
+            Color(.systemBackground).ignoresSafeArea()
 
-                VStack(spacing: 16) {
-                    TextField("이름", text: $fullName)
-                        .textFieldStyle(.roundedBorder)
-                        .textContentType(.name)
+            ScrollView {
+                VStack(spacing: 0) {
+                    // 헤더
+                    VStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.mainCoral.opacity(0.12))
+                                .frame(width: 80, height: 80)
+                            Image(systemName: "person.badge.plus")
+                                .font(.system(size: 32))
+                                .foregroundStyle(Color.mainCoral)
+                        }
 
-                    TextField("이메일", text: $email)
-                        .textFieldStyle(.roundedBorder)
-                        .textContentType(.emailAddress)
-                        .keyboardType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-
-                    SecureField("비밀번호", text: $password)
-                        .textFieldStyle(.roundedBorder)
-                        .textContentType(.newPassword)
-
-                    SecureField("비밀번호 확인", text: $confirmPassword)
-                        .textFieldStyle(.roundedBorder)
-                        .textContentType(.newPassword)
-                }
-                .padding(.horizontal)
-
-                if let errorMessage = errorMessage {
-                    Text(errorMessage)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                }
-
-                Button {
-                    Task { await signup() }
-                } label: {
-                    if isLoading {
-                        ProgressView()
-                            .tint(.white)
-                    } else {
-                        Text("가입하기")
-                            .fontWeight(.semibold)
+                        Text("회원가입")
+                            .font(.system(size: 24, weight: .bold))
+                        Text("PhotoLesson과 함께 시작하세요")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.secondary)
                     }
+                    .padding(.top, 40)
+                    .padding(.bottom, 40)
+
+                    // 입력 필드
+                    VStack(spacing: 24) {
+                        fieldRow(label: "이름", placeholder: "이름을 입력해주세요", text: $fullName)
+                        fieldRow(label: "이메일", placeholder: "이메일을 입력해주세요", text: $email, keyboard: .emailAddress)
+                        secureFieldRow(label: "비밀번호", placeholder: "비밀번호를 입력해주세요", text: $password)
+                        secureFieldRow(label: "비밀번호 확인", placeholder: "비밀번호를 다시 입력해주세요", text: $confirmPassword)
+                    }
+                    .padding(.horizontal, 28)
+
+                    // 에러
+                    if let errorMessage = errorMessage {
+                        Text(errorMessage)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.red)
+                            .padding(.top, 16)
+                            .transition(.opacity)
+                    }
+
+                    // 가입 버튼
+                    Button {
+                        Task { await signup() }
+                    } label: {
+                        HStack {
+                            if isLoading {
+                                ProgressView()
+                                    .tint(.white)
+                            } else {
+                                Text("가입하기")
+                                    .font(.system(size: 17, weight: .bold))
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 56)
+                        .background(isFormValid ? Color.mainCoral : Color(.systemGray4))
+                        .foregroundStyle(.white)
+                        .cornerRadius(16)
+                        .animation(.easeInOut(duration: 0.2), value: isFormValid)
+                    }
+                    .disabled(isLoading || !isFormValid)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 32)
+                    .padding(.bottom, 40)
                 }
-                .frame(maxWidth: .infinity)
-                .frame(height: 50)
-                .background(.blue)
-                .foregroundStyle(.white)
-                .cornerRadius(12)
-                .padding(.horizontal)
-                .disabled(isLoading || !isFormValid)
             }
         }
         .navigationTitle("회원가입")
         .navigationBarTitleDisplayMode(.inline)
+        .onTapGesture {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
         .alert("가입 완료", isPresented: $showSuccess) {
             Button("로그인하기") { dismiss() }
         } message: {
@@ -79,8 +93,42 @@ struct SignupView: View {
         }
     }
 
+    // MARK: - 필드 컴포넌트
+
+    private func fieldRow(label: String, placeholder: String, text: Binding<String>, keyboard: UIKeyboardType = .default) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(label)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.secondary)
+            TextField(placeholder, text: text)
+                .font(.system(size: 17))
+                .keyboardType(keyboard)
+                .textInputAutocapitalization(.never)
+                .padding(.bottom, 8)
+            Rectangle()
+                .fill(text.wrappedValue.isEmpty ? Color(.systemGray4) : Color.mainCoral)
+                .frame(height: 1.5)
+                .animation(.easeInOut(duration: 0.2), value: text.wrappedValue.isEmpty)
+        }
+    }
+
+    private func secureFieldRow(label: String, placeholder: String, text: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(label)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.secondary)
+            SecureField(placeholder, text: text)
+                .font(.system(size: 17))
+                .padding(.bottom, 8)
+            Rectangle()
+                .fill(text.wrappedValue.isEmpty ? Color(.systemGray4) : Color.mainCoral)
+                .frame(height: 1.5)
+                .animation(.easeInOut(duration: 0.2), value: text.wrappedValue.isEmpty)
+        }
+    }
+
     private var isFormValid: Bool {
-        !email.isEmpty && !password.isEmpty && !fullName.isEmpty && password == confirmPassword
+        !email.isEmpty && !password.isEmpty && !fullName.isEmpty && password == confirmPassword && confirmPassword.count >= 1
     }
 
     private func signup() async {
@@ -98,10 +146,8 @@ struct SignupView: View {
             showSuccess = true
         } catch let error as APIError {
             errorMessage = error.errorDescription
-            print("회원가입 APIError: \(error)")
         } catch {
-            errorMessage = "회원가입 실패: \(error.localizedDescription)"
-            print("회원가입 에러: \(error)")
+            errorMessage = "회원가입에 실패했습니다."
         }
         isLoading = false
     }

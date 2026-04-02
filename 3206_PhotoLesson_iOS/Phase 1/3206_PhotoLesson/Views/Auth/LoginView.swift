@@ -7,72 +7,134 @@ struct LoginView: View {
     @State private var showSignup = false
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var appeared = false
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 32) {
-                Spacer()
+            ZStack {
+                Color(.systemBackground).ignoresSafeArea()
 
-                // 로고
-                VStack(spacing: 8) {
-                    Image(systemName: "camera.fill")
-                        .font(.system(size: 60))
-                        .foregroundStyle(.blue)
-                    Text("PhotoLesson")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                    Text("사진 촬영을 배워보세요")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
+                VStack(spacing: 0) {
+                    Spacer()
+                        .frame(height: 80)
 
-                // 입력 필드
-                VStack(spacing: 16) {
-                    TextField("이메일", text: $email)
-                        .textFieldStyle(.roundedBorder)
-                        .textContentType(.emailAddress)
-                        .keyboardType(.emailAddress)
-                        .textInputAutocapitalization(.never)
+                    // 로고
+                    VStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.mainCoral.opacity(0.12))
+                                .frame(width: 100, height: 100)
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 40))
+                                .foregroundStyle(Color.mainCoral)
+                        }
+                        .scaleEffect(appeared ? 1 : 0.5)
+                        .opacity(appeared ? 1 : 0)
 
-                    SecureField("비밀번호", text: $password)
-                        .textFieldStyle(.roundedBorder)
-                        .textContentType(.password)
-                }
-                .padding(.horizontal)
-
-                if let errorMessage = errorMessage {
-                    Text(errorMessage)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                }
-
-                // 로그인 버튼
-                Button {
-                    Task { await login() }
-                } label: {
-                    if isLoading {
-                        ProgressView()
-                            .tint(.white)
-                    } else {
-                        Text("로그인")
-                            .fontWeight(.semibold)
+                        Text("PhotoLesson")
+                            .font(.system(size: 28, weight: .bold))
+                        Text("사진 촬영을 배워보세요")
+                            .font(.system(size: 15))
+                            .foregroundStyle(.secondary)
                     }
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 50)
-                .background(.blue)
-                .foregroundStyle(.white)
-                .cornerRadius(12)
-                .padding(.horizontal)
-                .disabled(isLoading || email.isEmpty || password.isEmpty)
+                    .padding(.bottom, 48)
 
-                // 회원가입 링크
-                Button("계정이 없으신가요? 회원가입") {
-                    showSignup = true
-                }
-                .font(.subheadline)
+                    // 입력 필드
+                    VStack(spacing: 24) {
+                        // 이메일
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("이메일")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.secondary)
+                            TextField("이메일을 입력해주세요", text: $email)
+                                .font(.system(size: 17))
+                                .textContentType(.emailAddress)
+                                .keyboardType(.emailAddress)
+                                .textInputAutocapitalization(.never)
+                                .padding(.bottom, 8)
+                            Rectangle()
+                                .fill(email.isEmpty ? Color(.systemGray4) : Color.mainCoral)
+                                .frame(height: 1.5)
+                                .animation(.easeInOut(duration: 0.2), value: email.isEmpty)
+                        }
 
-                Spacer()
+                        // 비밀번호
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("비밀번호")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.secondary)
+                            SecureField("비밀번호를 입력해주세요", text: $password)
+                                .font(.system(size: 17))
+                                .textContentType(.password)
+                                .padding(.bottom, 8)
+                            Rectangle()
+                                .fill(password.isEmpty ? Color(.systemGray4) : Color.mainCoral)
+                                .frame(height: 1.5)
+                                .animation(.easeInOut(duration: 0.2), value: password.isEmpty)
+                        }
+                    }
+                    .padding(.horizontal, 28)
+
+                    // 에러
+                    if let errorMessage = errorMessage {
+                        Text(errorMessage)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.red)
+                            .padding(.top, 12)
+                            .transition(.opacity)
+                    }
+
+                    Spacer()
+
+                    // 회원가입 링크
+                    HStack(spacing: 4) {
+                        Text("계정이 없으신가요?")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.secondary)
+                        Button("회원가입") {
+                            showSignup = true
+                        }
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.mainCoral)
+                    }
+                    .padding(.bottom, 16)
+
+                    // 로그인 버튼
+                    Button {
+                        Task { await login() }
+                    } label: {
+                        HStack {
+                            if isLoading {
+                                ProgressView()
+                                    .tint(.white)
+                            } else {
+                                Text("로그인")
+                                    .font(.system(size: 17, weight: .bold))
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 56)
+                        .background(
+                            (email.isEmpty || password.isEmpty)
+                            ? Color(.systemGray4)
+                            : Color.mainCoral
+                        )
+                        .foregroundStyle(.white)
+                        .cornerRadius(16)
+                        .animation(.easeInOut(duration: 0.2), value: email.isEmpty || password.isEmpty)
+                    }
+                    .disabled(isLoading || email.isEmpty || password.isEmpty)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 40)
+                }
+            }
+            .onTapGesture {
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
+            .onAppear {
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
+                    appeared = true
+                }
             }
             .navigationDestination(isPresented: $showSignup) {
                 SignupView()
@@ -85,14 +147,11 @@ struct LoginView: View {
         errorMessage = nil
         do {
             let response = try await APIService.shared.login(email: email, password: password)
-            print("로그인 성공: userId=\(response.userId), token=\(response.accessToken.prefix(20))...")
             authManager.saveLoginInfo(response: response)
         } catch let error as APIError {
             errorMessage = error.errorDescription
-            print("로그인 APIError: \(error)")
         } catch {
-            errorMessage = "로그인 실패: \(error.localizedDescription)"
-            print("로그인 에러: \(error)")
+            errorMessage = "로그인에 실패했습니다."
         }
         isLoading = false
     }

@@ -130,18 +130,35 @@ struct PortfolioListView: View {
 
 struct PortfolioCard: View {
     let portfolio: Portfolio
+    @State private var firstImageUrl: String?
 
     var body: some View {
         HStack(spacing: 16) {
-            // 아이콘
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color(.systemGray5))
-                .frame(width: 70, height: 70)
-                .overlay {
-                    Image(systemName: "photo.stack")
-                        .font(.title2)
-                        .foregroundStyle(.blue)
+            // 썸네일: 첫 번째 이미지 or 아이콘
+            Group {
+                if let urlStr = firstImageUrl,
+                   let fullUrl = APIService.shared.fullImageURL(urlStr),
+                   let url = URL(string: fullUrl) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let img):
+                            img.resizable().scaledToFill()
+                        default:
+                            Color(.systemGray5)
+                                .overlay { ProgressView() }
+                        }
+                    }
+                } else {
+                    Color(.systemGray5)
+                        .overlay {
+                            Image(systemName: "photo.stack")
+                                .font(.title2)
+                                .foregroundStyle(Color.mainCoral)
+                        }
                 }
+            }
+            .frame(width: 70, height: 70)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(portfolio.portfolioName)
@@ -170,6 +187,13 @@ struct PortfolioCard: View {
         }
         .padding()
         .background(Color(.systemGray6))
-        .cornerRadius(12)
+        .cornerRadius(16)
+        .task {
+            // 첫 번째 이미지 로드
+            do {
+                let images = try await APIService.shared.getPortfolioImages(portfolioId: portfolio.portfolioId)
+                firstImageUrl = images.first?.thumbnailUrl ?? images.first?.imageUrl
+            } catch {}
+        }
     }
 }

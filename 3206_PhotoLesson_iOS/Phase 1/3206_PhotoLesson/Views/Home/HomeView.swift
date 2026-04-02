@@ -32,6 +32,7 @@ struct HomeView: View {
                     .padding(.horizontal)
                     .padding(.vertical, 10)
                 }
+                .animation(.spring(), value: selectedCategory)
 
                 // 강의 목록
                 if isLoading && courses.isEmpty {
@@ -50,12 +51,13 @@ struct HomeView: View {
                     Spacer()
                 } else {
                     ScrollView {
-                        LazyVStack(spacing: 16) {
+                        LazyVStack(spacing: 8) {
                             ForEach(courses) { course in
                                 NavigationLink(destination: CourseDetailView(courseId: course.courseId)) {
                                     CourseCardView(course: course)
                                 }
                                 .buttonStyle(.plain)
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
                             }
 
                             // 페이지네이션
@@ -64,10 +66,10 @@ struct HomeView: View {
                                     currentPage += 1
                                     Task { await loadMoreCourses() }
                                 }
-                                .padding()
+                                .padding(.horizontal)
+                                .padding(.vertical, 12)
                             }
                         }
-                        .padding()
                     }
                 }
             }
@@ -143,7 +145,7 @@ struct CategoryChip: View {
                 .fontWeight(isSelected ? .semibold : .regular)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(isSelected ? .blue : Color(.systemGray6))
+                .background(isSelected ? Color.mainCoral : Color(.systemGray6))
                 .foregroundStyle(isSelected ? .white : .primary)
                 .cornerRadius(20)
         }

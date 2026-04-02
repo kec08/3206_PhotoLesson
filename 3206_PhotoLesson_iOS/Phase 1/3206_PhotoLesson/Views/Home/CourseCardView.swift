@@ -4,8 +4,8 @@ struct CourseCardView: View {
     let course: CourseListItem
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // 썸네일
+        VStack(alignment: .leading, spacing: 0) {
+            // 썸네일 - 직각, 풀 너비
             ZStack {
                 if let urlStr = course.thumbnailUrl, let url = URL(string: urlStr) {
                     AsyncImage(url: url) { image in
@@ -19,57 +19,39 @@ struct CourseCardView: View {
                     thumbnailPlaceholder
                 }
             }
-            .frame(height: 180)
+            .frame(height: 210)
             .clipped()
-            .cornerRadius(12)
 
-            VStack(alignment: .leading, spacing: 6) {
-                // 카테고리 & 레벨 태그
-                HStack(spacing: 6) {
-                    if let cat = course.categoryEnum {
-                        Text(cat.displayName)
-                            .font(.caption2)
-                            .fontWeight(.medium)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(.blue.opacity(0.1))
-                            .foregroundStyle(.blue)
-                            .cornerRadius(4)
+            // 정보 영역
+            HStack(alignment: .top, spacing: 12) {
+                // 프로필 아이콘
+                Circle()
+                    .fill(Color.mainCoral.opacity(0.15))
+                    .frame(width: 40, height: 40)
+                    .overlay {
+                        Text(String(course.instructorName.prefix(1)))
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(Color.mainCoral)
                     }
-                    if let level = course.levelEnum {
-                        Text(level.displayName)
-                            .font(.caption2)
-                            .fontWeight(.medium)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(.orange.opacity(0.1))
-                            .foregroundStyle(.orange)
-                            .cornerRadius(4)
-                    }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(course.title)
+                        .font(.system(size: 15, weight: .semibold))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .foregroundStyle(.primary)
+
+                    Text("\(course.instructorName) · \(course.sectionCount)개 섹션 · \(course.lectureCount)개 레슨")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
 
-                // 제목
-                Text(course.title)
-                    .font(.headline)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-
-                // 강사명
-                Text(course.instructorName)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
-                // 섹션 & 레슨 수
-                HStack(spacing: 12) {
-                    Label("\(course.sectionCount)개 섹션", systemImage: "folder")
-                    Label("\(course.lectureCount)개 레슨", systemImage: "play.circle")
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                Spacer()
             }
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
         }
-        .background(Color(.systemBackground))
     }
 
     private var thumbnailPlaceholder: some View {
@@ -77,19 +59,20 @@ struct CourseCardView: View {
             .fill(Color(.systemGray5))
             .aspectRatio(16/9, contentMode: .fill)
             .overlay {
-                Image(systemName: "camera")
-                    .font(.system(size: 40))
-                    .foregroundStyle(.secondary)
+                VStack(spacing: 8) {
+                    Image(systemName: "play.rectangle.fill")
+                        .font(.system(size: 44))
+                        .foregroundStyle(.secondary)
+                }
             }
     }
 }
 
 #Preview {
     ScrollView {
-        VStack(spacing: 16) {
+        VStack(spacing: 0) {
             CourseCardView(course: SampleData.course1)
             CourseCardView(course: SampleData.course2)
         }
-        .padding()
     }
 }

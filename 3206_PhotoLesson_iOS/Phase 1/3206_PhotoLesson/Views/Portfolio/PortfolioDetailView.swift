@@ -97,7 +97,8 @@ struct PortfolioDetailView: View {
 
     @ViewBuilder
     private func imageCell(_ image: PortfolioImage) -> some View {
-        if let url = URL(string: image.thumbnailUrl ?? image.imageUrl) {
+        if let urlStr = APIService.shared.fullImageURL(image.thumbnailUrl ?? image.imageUrl),
+           let url = URL(string: urlStr) {
             AsyncImage(url: url) { phase in
                 switch phase {
                 case .success(let img):
@@ -115,7 +116,8 @@ struct PortfolioDetailView: View {
                         .overlay { ProgressView() }
                 }
             }
-            .frame(minHeight: 120)
+            .frame(height: 120)
+            .frame(maxWidth: .infinity)
             .clipped()
             .contextMenu {
                 Button(role: .destructive) {

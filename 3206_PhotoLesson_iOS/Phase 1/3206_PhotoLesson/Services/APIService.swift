@@ -26,12 +26,21 @@ class APIService {
     static let shared = APIService()
 
     // TODO: 실제 서버 주소로 변경 (현재 로컬 Mac IP)
-    private let baseURL = "http://172.28.15.240:8080/api/v1"
+    private let serverHost = "http://172.28.15.240:8080"
+    private var baseURL: String { serverHost + "/api/v1" }
 
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
         return d
     }()
+
+    /// 상대 경로 이미지 URL을 절대 URL로 변환
+    /// "/uploads/abc.jpg" → "http://172.28.15.240:8080/uploads/abc.jpg"
+    func fullImageURL(_ path: String?) -> String? {
+        guard let path = path, !path.isEmpty else { return nil }
+        if path.hasPrefix("http") { return path }
+        return serverHost + path
+    }
 
     // MARK: - Generic Request
 
@@ -106,6 +115,13 @@ class APIService {
 
     func getUser(userId: Int) async throws -> User {
         return try await request(endpoint: "/users/\(userId)")
+    }
+
+    func updateUser(userId: Int, fullName: String?, profileImageUrl: String?) async throws -> User {
+        var body: [String: String] = [:]
+        if let fullName = fullName { body["fullName"] = fullName }
+        if let profileImageUrl = profileImageUrl { body["profileImageUrl"] = profileImageUrl }
+        return try await request(endpoint: "/users/\(userId)", method: "PUT", body: body)
     }
 
     // MARK: - Courses

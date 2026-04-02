@@ -7,10 +7,13 @@ struct ContentView: View {
         Group {
             if authManager.isLoggedIn {
                 MainTabView()
+                    .transition(.move(edge: .trailing))
             } else {
                 LoginView()
+                    .transition(.move(edge: .leading))
             }
         }
+        .animation(.easeInOut(duration: 0.4), value: authManager.isLoggedIn)
     }
 }
 
@@ -20,6 +23,11 @@ struct MainTabView: View {
             HomeView()
                 .tabItem {
                     Label("홈", systemImage: "house.fill")
+                }
+
+            MyCoursesView()
+                .tabItem {
+                    Label("내 강의", systemImage: "play.rectangle.fill")
                 }
 
             PortfolioListView()
@@ -32,6 +40,7 @@ struct MainTabView: View {
                     Label("마이페이지", systemImage: "person.fill")
                 }
         }
+        .tint(.mainCoral)
     }
 }
 

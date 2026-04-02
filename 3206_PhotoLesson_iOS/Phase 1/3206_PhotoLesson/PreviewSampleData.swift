@@ -116,18 +116,26 @@ enum SampleData {
 
     static let enrolledCourse1 = EnrolledCourse(
         courseId: 101,
-        courseTitle: "DSLR 기초 - 노출 이해하기",
-        completedLectures: 3,
+        title: "DSLR 기초 - 노출 이해하기",
+        category: "PORTRAIT",
+        level: "BEGINNER",
+        thumbnailUrl: nil,
         totalLectures: 24,
-        progressPercent: 12.5
+        completedLectures: 3,
+        progressPercent: 12.5,
+        enrolledAt: "2026-03-01T10:00:00Z"
     )
 
     static let enrolledCourse2 = EnrolledCourse(
         courseId: 102,
-        courseTitle: "인물 촬영 고급 기법",
-        completedLectures: 12,
+        title: "인물 촬영 고급 기법",
+        category: "PORTRAIT",
+        level: "ADVANCED",
+        thumbnailUrl: nil,
         totalLectures: 35,
-        progressPercent: 34.3
+        completedLectures: 12,
+        progressPercent: 34.3,
+        enrolledAt: "2026-02-20T10:00:00Z"
     )
 
     static let progressResponse = ProgressResponse(

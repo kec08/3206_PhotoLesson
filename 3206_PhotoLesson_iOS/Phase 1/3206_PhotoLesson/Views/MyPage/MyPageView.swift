@@ -6,6 +6,10 @@ struct MyPageView: View {
     @State private var user: User?
     @State private var progressData: ProgressResponse?
     @State private var isLoading = true
+    @State private var portfolios: [Portfolio] = []
+    @State private var portfolioData: [(portfolio: Portfolio, images: [PortfolioImage])] = []
+    @State private var showEditProfile = false
+    @State private var editName = ""
 
     var body: some View {
         NavigationStack {
@@ -15,17 +19,13 @@ struct MyPageView: View {
                     profileSection
 
                     // 전체 학습 현황
-                    if let progress = progressData {
-                        overallProgressSection(progress)
-                    }
+                    overallProgressSection(progressData)
 
                     Divider()
                         .padding(.horizontal)
 
-                    // 수강 중인 강의 목록
-                    if let progress = progressData {
-                        enrolledCoursesSection(progress)
-                    }
+                    // 인스타그램 피드 스타일 포트폴리오
+                    portfolioFeedSection
                 }
                 .padding(.vertical)
             }
@@ -40,12 +40,61 @@ struct MyPageView: View {
             }
             .task { await loadData() }
             .refreshable { await loadData() }
+            .sheet(isPresented: $showEditProfile) {
+                editProfileSheet
+            }
+        }
+    }
+
+    private var editProfileSheet: some View {
+        NavigationStack {
+            VStack(spacing: 24) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("이름")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    TextField("이름을 입력해주세요", text: $editName)
+                        .font(.system(size: 17))
+                        .padding(.bottom, 8)
+                    Rectangle()
+                        .fill(editName.isEmpty ? Color(.systemGray4) : Color.mainCoral)
+                        .frame(height: 1.5)
+                }
+                .padding(.horizontal, 28)
+                .padding(.top, 24)
+
+                Spacer()
+            }
+            .navigationTitle("프로필 수정")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") { showEditProfile = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("저장") {
+                        Task { await saveProfile() }
+                    }
+                    .disabled(editName.isEmpty)
+                    .foregroundStyle(Color.mainCoral)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private func saveProfile() async {
+        guard let userId = authManager.currentUserId else { return }
+        do {
+            user = try await APIService.shared.updateUser(userId: userId, fullName: editName, profileImageUrl: nil)
+            showEditProfile = false
+        } catch {
+            print("프로필 수정 실패: \(error)")
         }
     }
 
     private var profileSection: some View {
         HStack(spacing: 16) {
-            // 프로필 이미지
             if let urlStr = user?.profileImageUrl, let url = URL(string: urlStr) {
                 AsyncImage(url: url) { image in
                     image.resizable().scaledToFill()
@@ -68,6 +117,21 @@ struct MyPageView: View {
             }
 
             Spacer()
+
+            Button {
+                editName = user?.fullName ?? ""
+                showEditProfile = true
+            } label: {
+                Text("편집")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.mainCoral)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.mainCoral, lineWidth: 1)
+                    )
+            }
         }
         .padding(.horizontal)
     }
@@ -84,43 +148,72 @@ struct MyPageView: View {
     }
 
     @ViewBuilder
-    private func overallProgressSection(_ progress: ProgressResponse) -> some View {
+    private func overallProgressSection(_ progress: ProgressResponse?) -> some View {
         VStack(spacing: 12) {
-            HStack(spacing: 0) {
-                StatCard(title: "수강 강의", value: "\(progress.totalEnrolledCourses)", icon: "book.fill")
-                StatCard(title: "완료 레슨", value: "\(progress.totalCompletedLectures)", icon: "checkmark.circle.fill")
-                StatCard(title: "전체 진도율", value: "\(Int(progress.totalProgressPercent))%", icon: "chart.bar.fill")
+            HStack(spacing: 8) {
+                StatCard(title: "수강 강의", value: "\(progress?.totalEnrolledCourses ?? 0)", icon: "book.fill")
+                StatCard(title: "완료 레슨", value: "\(progress?.totalCompletedLectures ?? 0)", icon: "checkmark.circle.fill")
+                StatCard(title: "전체 진도율", value: "\(Int(progress?.totalProgressPercent ?? 0))%", icon: "chart.bar.fill")
             }
         }
         .padding(.horizontal)
     }
 
-    @ViewBuilder
-    private func enrolledCoursesSection(_ progress: ProgressResponse) -> some View {
+    // MARK: - 인스타 프로필 스타일 포트폴리오 그리드
+    private var portfolioFeedSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("수강 중인 강의")
-                .font(.title3)
-                .fontWeight(.bold)
-                .padding(.horizontal)
+            HStack {
+                Text("내 포트폴리오")
+                    .font(.title3)
+                    .fontWeight(.bold)
+                Spacer()
+                NavigationLink(destination: PortfolioListView()) {
+                    Text("전체보기")
+                        .font(.subheadline)
+                        .foregroundStyle(Color.mainCoral)
+                }
+            }
+            .padding(.horizontal)
 
-            if progress.progress.isEmpty {
+            if portfolioData.isEmpty {
                 VStack(spacing: 12) {
-                    Image(systemName: "book.closed")
+                    Image(systemName: "photo.on.rectangle.angled")
                         .font(.system(size: 40))
                         .foregroundStyle(.secondary)
-                    Text("수강 중인 강의가 없습니다")
+                    Text("아직 포트폴리오가 없습니다")
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 40)
             } else {
-                ForEach(progress.progress) { course in
-                    NavigationLink(destination: CourseDetailView(courseId: course.courseId)) {
-                        EnrolledCourseCard(course: course)
+                // 인스타 프로필처럼 3열 그리드 (대표 이미지 1장씩)
+                LazyVGrid(columns: [
+                    GridItem(.flexible(), spacing: 2),
+                    GridItem(.flexible(), spacing: 2),
+                    GridItem(.flexible(), spacing: 2)
+                ], spacing: 2) {
+                    ForEach(portfolioData, id: \.portfolio.portfolioId) { item in
+                        NavigationLink(destination: PortfolioFeedView(portfolio: item.portfolio, images: item.images)) {
+                            // 대표 이미지 (첫 번째)
+                            if let firstImage = item.images.first,
+                               let urlStr = APIService.shared.fullImageURL(firstImage.thumbnailUrl ?? firstImage.imageUrl),
+                               let url = URL(string: urlStr) {
+                                AsyncImage(url: url) { phase in
+                                    switch phase {
+                                    case .success(let img):
+                                        img.resizable().scaledToFill()
+                                    default:
+                                        Color(.systemGray5)
+                                    }
+                                }
+                                .frame(height: 130)
+                                .frame(maxWidth: .infinity)
+                                .clipped()
+                            }
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .padding(.horizontal)
                 }
+                .padding(.horizontal, 2)
             }
         }
     }
@@ -139,6 +232,23 @@ struct MyPageView: View {
         } catch {
             print("마이페이지 데이터 로드 실패: \(error)")
         }
+
+        // 포트폴리오 데이터 로드 (각 포트폴리오의 이미지도 함께)
+        do {
+            let portfolioResponse = try await APIService.shared.getPortfolios()
+            portfolios = portfolioResponse.content
+            var loadedData: [(portfolio: Portfolio, images: [PortfolioImage])] = []
+            for p in portfolios {
+                let images = try await APIService.shared.getPortfolioImages(portfolioId: p.portfolioId)
+                if !images.isEmpty {
+                    loadedData.append((portfolio: p, images: images))
+                }
+            }
+            portfolioData = loadedData
+        } catch {
+            print("포트폴리오 데이터 로드 실패: \(error)")
+        }
+
         isLoading = false
     }
 }
@@ -152,7 +262,7 @@ struct StatCard: View {
         VStack(spacing: 8) {
             Image(systemName: icon)
                 .font(.title2)
-                .foregroundStyle(.blue)
+                .foregroundStyle(Color.mainCoral)
             Text(value)
                 .font(.title3)
                 .fontWeight(.bold)
@@ -172,20 +282,6 @@ struct StatCard: View {
         .environmentObject(AuthManager())
 }
 
-#Preview("수강 강의 카드") {
-    EnrolledCourseCard(course: SampleData.enrolledCourse1)
-        .padding()
-}
-
-#Preview("통계 카드") {
-    HStack {
-        StatCard(title: "수강 강의", value: "3", icon: "book.fill")
-        StatCard(title: "완료 레슨", value: "15", icon: "checkmark.circle.fill")
-        StatCard(title: "전체 진도율", value: "23%", icon: "chart.bar.fill")
-    }
-    .padding()
-}
-
 struct EnrolledCourseCard: View {
     let course: EnrolledCourse
 
@@ -196,7 +292,7 @@ struct EnrolledCourseCard: View {
                 .lineLimit(2)
 
             ProgressView(value: course.progressPercent, total: 100)
-                .tint(.blue)
+                .tint(Color.mainCoral)
 
             HStack {
                 Text("\(course.completedLectures)/\(course.totalLectures) 레슨")
@@ -206,7 +302,7 @@ struct EnrolledCourseCard: View {
                 Text("\(Int(course.progressPercent))%")
                     .font(.caption)
                     .fontWeight(.semibold)
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(Color.mainCoral)
             }
         }
         .padding()

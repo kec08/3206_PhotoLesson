@@ -1,41 +1,74 @@
 import SwiftUI
-import AVKit
-import Combine
+import WebKit
+
+struct YouTubePlayerView: UIViewRepresentable {
+    let videoURL: String
+
+    func makeUIView(context: Context) -> WKWebView {
+        let config = WKWebViewConfiguration()
+        config.allowsInlineMediaPlayback = true
+        config.mediaTypesRequiringUserActionForPlayback = []
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.scrollView.isScrollEnabled = false
+        return webView
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        let embedURL = convertToEmbedURL(videoURL)
+        if let url = URL(string: embedURL) {
+            webView.load(URLRequest(url: url))
+        }
+    }
+
+    /// youtube.com/watch?v=ID → youtube.com/embed/ID 변환
+    private func convertToEmbedURL(_ urlString: String) -> String {
+        // 이미 embed URL이면 그대로
+        if urlString.contains("/embed/") { return urlString }
+
+        // watch?v=ID 형식 → embed/ID
+        if urlString.contains("watch?v="),
+           let videoId = URLComponents(string: urlString)?
+            .queryItems?.first(where: { $0.name == "v" })?.value {
+            return "https://www.youtube.com/embed/\(videoId)?playsinline=1"
+        }
+
+        // youtu.be/ID 형식 → embed/ID
+        if urlString.contains("youtu.be/"),
+           let videoId = urlString.split(separator: "/").last {
+            return "https://www.youtube.com/embed/\(videoId)?playsinline=1"
+        }
+
+        return urlString
+    }
+}
 
 struct VideoPlayerView: View {
     let lecture: Lecture
     let courseTitle: String
 
-    @State private var player: AVPlayer?
-    @State private var isPlaying = false
-    @State private var currentPosition: Double = 0
     @State private var showCompletionAlert = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(spacing: 0) {
-            // 비디오 플레이어
-            GeometryReader { geometry in
-                let playerHeight = geometry.size.width * 9 / 16
-                if let player = player {
-                    VideoPlayer(player: player)
-                        .frame(height: playerHeight)
-                } else {
-                    Rectangle()
-                        .fill(Color.black)
-                        .frame(height: playerHeight)
-                        .overlay {
-                            VStack(spacing: 12) {
-                                Image(systemName: "play.circle.fill")
-                                    .font(.system(size: 60))
-                                    .foregroundStyle(.white.opacity(0.8))
-                                Text("영상 준비 중")
-                                    .foregroundStyle(.white.opacity(0.8))
-                            }
+            // YouTube 웹뷰
+            if let videoUrl = lecture.videoUrl, !videoUrl.isEmpty {
+                YouTubePlayerView(videoURL: videoUrl)
+                    .frame(height: 220)
+            } else {
+                Rectangle()
+                    .fill(Color.black)
+                    .frame(height: 220)
+                    .overlay {
+                        VStack(spacing: 12) {
+                            Image(systemName: "play.circle.fill")
+                                .font(.system(size: 60))
+                                .foregroundStyle(.white.opacity(0.8))
+                            Text("영상 준비 중")
+                                .foregroundStyle(.white.opacity(0.8))
                         }
-                }
+                    }
             }
-            .frame(height: 220)
 
             // 레슨 정보
             ScrollView {
@@ -50,54 +83,31 @@ struct VideoPlayerView: View {
 
                     HStack(spacing: 20) {
                         Label(lecture.formattedPlayTime, systemImage: "clock")
-                        if player != nil {
-                            Label(formatPosition(currentPosition), systemImage: "play.fill")
-                        }
                     }
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 
                     Divider()
 
-                    // 재생 컨트롤
-                    if player != nil {
-                        VStack(spacing: 12) {
-                            ProgressView(value: currentPosition, total: Double(lecture.playTime))
-                                .tint(.blue)
-
-                            HStack {
-                                Text(formatPosition(currentPosition))
-                                Spacer()
-                                Text(lecture.formattedPlayTime)
-                            }
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-                    }
-
                     // 시청 완료 버튼
                     Button {
                         showCompletionAlert = true
                     } label: {
                         Label("시청 완료", systemImage: "checkmark.circle")
-                            .fontWeight(.semibold)
+                            .font(.system(size: 17, weight: .bold))
                             .frame(maxWidth: .infinity)
-                            .frame(height: 50)
+                            .frame(height: 52)
+                            .background(Color.mainCoral)
+                            .foregroundStyle(.white)
+                            .cornerRadius(14)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .cornerRadius(12)
                 }
                 .padding()
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { setupPlayer() }
         .onDisappear {
             saveWatchHistory()
-            player?.pause()
-        }
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
-            updatePosition()
         }
         .alert("시청 완료", isPresented: $showCompletionAlert) {
             Button("확인") {
@@ -109,30 +119,11 @@ struct VideoPlayerView: View {
         }
     }
 
-    private func setupPlayer() {
-        if let urlStr = lecture.videoUrl, let url = URL(string: urlStr) {
-            player = AVPlayer(url: url)
-        }
-    }
-
-    private func updatePosition() {
-        guard let player = player else { return }
-        let time = player.currentTime()
-        currentPosition = CMTimeGetSeconds(time)
-    }
-
-    private func formatPosition(_ seconds: Double) -> String {
-        let mins = Int(seconds) / 60
-        let secs = Int(seconds) % 60
-        return String(format: "%d:%02d", mins, secs)
-    }
-
     private func saveWatchHistory() {
-        let position = Int(currentPosition)
         Task {
             _ = try? await APIService.shared.recordWatchHistory(
                 lectureId: lecture.lectureId,
-                lastPosition: position
+                lastPosition: 0
             )
         }
     }
