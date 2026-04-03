@@ -60,4 +60,20 @@ public class AuthService {
                 .expiresIn(jwtTokenProvider.getExpiration())
                 .build();
     }
+
+    public LoginResponse refresh(Long userId) {
+        Member member = memberRepository.findById(userId)
+                .orElseThrow(() -> CustomException.unauthorized("사용자를 찾을 수 없습니다."));
+
+        String accessToken = jwtTokenProvider.createAccessToken(member.getId(), member.getEmail());
+        String refreshToken = jwtTokenProvider.createRefreshToken(member.getId());
+
+        return LoginResponse.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .userId(member.getId())
+                .email(member.getEmail())
+                .expiresIn(jwtTokenProvider.getExpiration())
+                .build();
+    }
 }

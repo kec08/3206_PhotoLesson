@@ -49,7 +49,8 @@ class APIService {
         method: String = "GET",
         body: (any Encodable)? = nil,
         queryItems: [URLQueryItem]? = nil,
-        requiresAuth: Bool = true
+        requiresAuth: Bool = true,
+        isRetry: Bool = false
     ) async throws -> T {
         guard var urlComponents = URLComponents(string: baseURL + endpoint) else {
             throw APIError.invalidURL
@@ -89,6 +90,27 @@ class APIService {
                 throw APIError.decodingError(error)
             }
         case 401:
+            // 인증 불필요한 요청(로그인/회원가입)은 그냥 에러 반환
+            if !requiresAuth {
+                let errorResp = try? decoder.decode(ErrorResponse.self, from: data)
+                throw APIError.serverError(errorResp?.message ?? "이메일 또는 비밀번호가 일치하지 않습니다.")
+            }
+            // 토큰 만료 → 재발급 시도 (1번만)
+            if !isRetry {
+                let refreshed = await refreshToken()
+                if refreshed {
+                    return try await request(
+                        endpoint: endpoint,
+                        method: method,
+                        body: body,
+                        queryItems: queryItems,
+                        requiresAuth: requiresAuth,
+                        isRetry: true
+                    )
+                }
+            }
+            // 재발급 실패 → 로그아웃
+            await AuthManager.shared.logout()
             throw APIError.unauthorized
         case 409:
             let errorResp = try? decoder.decode(ErrorResponse.self, from: data)
@@ -96,6 +118,33 @@ class APIService {
         default:
             let errorResp = try? decoder.decode(ErrorResponse.self, from: data)
             throw APIError.serverError(errorResp?.message ?? "서버 오류가 발생했습니다.")
+        }
+    }
+
+    // MARK: - 토큰 재발급
+
+    private func refreshToken() async -> Bool {
+        guard let refreshToken = UserDefaults.standard.string(forKey: "refreshToken") else {
+            return false
+        }
+
+        guard let url = URL(string: baseURL + "/auth/refresh") else { return false }
+
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("Bearer \(refreshToken)", forHTTPHeaderField: "Authorization")
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: urlRequest)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                return false
+            }
+            let loginResponse = try decoder.decode(LoginResponse.self, from: data)
+            await AuthManager.shared.saveLoginInfo(response: loginResponse)
+            return true
+        } catch {
+            return false
         }
     }
 

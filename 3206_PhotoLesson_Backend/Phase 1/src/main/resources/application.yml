@@ -19,7 +19,7 @@ spring:
 
 jwt:
   secret: photolesson-secret-key-for-jwt-token-generation-must-be-at-least-256-bits
-  expiration: 1800000
+  expiration: 7200000
   refresh-expiration: 604800000
 
 server:
