@@ -47,9 +47,10 @@ struct YouTubePlayerView: UIViewRepresentable {
 struct VideoPlayerView: View {
     let lecture: Lecture
     let courseTitle: String
+    var onCompleted: ((Int) -> Void)? = nil  // lectureId 전달
 
     @State private var showCompletionAlert = false
-    @Environment(\.dismiss) private var dismiss
+    @State private var isCompleted = false
 
     var body: some View {
         ScrollView {
@@ -93,24 +94,26 @@ struct VideoPlayerView: View {
 
                     // 시청 완료 버튼
                     Button {
-                        showCompletionAlert = true
+                        if !isCompleted {
+                            showCompletionAlert = true
+                        }
                     } label: {
-                        Label("시청 완료", systemImage: "checkmark.circle")
+                        Label(isCompleted ? "시청 완료됨" : "시청 완료",
+                              systemImage: isCompleted ? "checkmark.circle.fill" : "checkmark.circle")
                             .font(.system(size: 17, weight: .bold))
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
-                            .background(Color.mainCoral)
+                            .background(isCompleted ? Color.green : Color.mainCoral)
                             .foregroundStyle(.white)
                             .cornerRadius(14)
                     }
+                    .disabled(isCompleted)
+                    .animation(.easeInOut, value: isCompleted)
                 }
                 .padding()
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .onDisappear {
-            saveWatchHistory()
-        }
         .alert("시청 완료", isPresented: $showCompletionAlert) {
             Button("확인") {
                 Task { await markCompleted() }
@@ -121,21 +124,13 @@ struct VideoPlayerView: View {
         }
     }
 
-    private func saveWatchHistory() {
-        Task {
-            _ = try? await APIService.shared.recordWatchHistory(
-                lectureId: lecture.lectureId,
-                lastPosition: 0
-            )
-        }
-    }
-
     private func markCompleted() async {
         _ = try? await APIService.shared.recordWatchHistory(
             lectureId: lecture.lectureId,
             lastPosition: lecture.playTime
         )
-        dismiss()
+        isCompleted = true
+        onCompleted?(lecture.lectureId)
     }
 }
 

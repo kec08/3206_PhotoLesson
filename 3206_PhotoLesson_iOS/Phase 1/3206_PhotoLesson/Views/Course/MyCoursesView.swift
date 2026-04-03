@@ -86,11 +86,13 @@ struct MyCoursesView: View {
 struct CoursePlayerView: View {
     let courseId: Int
     let courseTitle: String
+    @EnvironmentObject var authManager: AuthManager
 
     @State private var course: CourseDetail?
     @State private var isLoading = true
     @State private var selectedLecture: Lecture?
     @State private var showPlaylist = false
+    @State private var completedLectureIds: Set<Int> = []
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -99,9 +101,11 @@ struct CoursePlayerView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let course = course {
                 VStack(spacing: 0) {
-                    // 영상 영역
-                    if let lecture = selectedLecture ?? firstLecture(course) {
-                        VideoPlayerView(lecture: lecture, courseTitle: course.title)
+                    if let lecture = selectedLecture ?? firstUncompletedLecture(course) {
+                        VideoPlayerView(lecture: lecture, courseTitle: course.title) { completedId in
+                            completedLectureIds.insert(completedId)
+                        }
+                        .id(lecture.lectureId) // 강의 변경 시 웹뷰 새로 로드
                     }
                 }
 
@@ -119,8 +123,9 @@ struct CoursePlayerView: View {
                                 Text("재생목록")
                                     .font(.system(size: 15, weight: .semibold))
                                 Spacer()
-                                let total = course.sections.reduce(0) { $0 + ($1.lectures?.count ?? 0) }
-                                Text("\(total)개 강의")
+                                let total = allLectures(course).count
+                                let done = completedLectureIds.count
+                                Text("\(done)/\(total) 완료")
                                     .font(.system(size: 13))
                                     .foregroundStyle(.secondary)
                                 Image(systemName: "chevron.up")
@@ -141,7 +146,10 @@ struct CoursePlayerView: View {
         .navigationTitle("강의")
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadCourse() }
-        .sheet(isPresented: $showPlaylist) {
+        .sheet(isPresented: $showPlaylist, onDismiss: {
+            // 시트 닫힐 때 완료 상태 새로고침
+            Task { await loadWatchHistory() }
+        }) {
             playlistSheet
         }
     }
@@ -162,19 +170,22 @@ struct CoursePlayerView: View {
 
                                 if let lectures = section.lectures {
                                     ForEach(lectures) { lecture in
+                                        let isCompleted = completedLectureIds.contains(lecture.lectureId)
+                                        let isSelected = selectedLecture?.lectureId == lecture.lectureId
+
                                         Button {
                                             selectedLecture = lecture
                                             showPlaylist = false
                                         } label: {
                                             HStack(spacing: 12) {
-                                                Image(systemName: selectedLecture?.lectureId == lecture.lectureId ? "play.circle.fill" : "play.circle")
-                                                    .foregroundStyle(selectedLecture?.lectureId == lecture.lectureId ? Color.mainCoral : .secondary)
+                                                Image(systemName: isSelected ? "play.circle.fill" : (isCompleted ? "checkmark.circle.fill" : "play.circle"))
+                                                    .foregroundStyle(isSelected ? Color.mainCoral : (isCompleted ? .green : .secondary))
                                                     .font(.title3)
 
                                                 VStack(alignment: .leading, spacing: 2) {
                                                     Text(lecture.title)
-                                                        .font(.system(size: 15, weight: selectedLecture?.lectureId == lecture.lectureId ? .bold : .regular))
-                                                        .foregroundStyle(selectedLecture?.lectureId == lecture.lectureId ? Color.mainCoral : .primary)
+                                                        .font(.system(size: 15, weight: isSelected ? .bold : .regular))
+                                                        .foregroundStyle(isSelected ? Color.mainCoral : (isCompleted ? .secondary : .primary))
                                                         .multilineTextAlignment(.leading)
                                                     Text(lecture.formattedPlayTime)
                                                         .font(.caption)
@@ -182,10 +193,17 @@ struct CoursePlayerView: View {
                                                 }
 
                                                 Spacer()
+
+                                                // 완료 표시
+                                                if isCompleted {
+                                                    Text("완료")
+                                                        .font(.system(size: 12, weight: .semibold))
+                                                        .foregroundStyle(.green)
+                                                }
                                             }
                                             .padding(.horizontal, 16)
                                             .padding(.vertical, 12)
-                                            .background(selectedLecture?.lectureId == lecture.lectureId ? Color.mainCoral.opacity(0.08) : Color.clear)
+                                            .background(isSelected ? Color.mainCoral.opacity(0.08) : Color.clear)
                                         }
 
                                         Divider().padding(.leading, 52)
@@ -210,19 +228,50 @@ struct CoursePlayerView: View {
         .presentationDragIndicator(.visible)
     }
 
-    private func firstLecture(_ course: CourseDetail) -> Lecture? {
-        course.sections.first?.lectures?.first
+    // 모든 레슨 ID 목록
+    private func allLectures(_ course: CourseDetail) -> [Lecture] {
+        course.sections.flatMap { $0.lectures ?? [] }
+    }
+
+    // 미완료 첫 번째 강의 찾기
+    private func firstUncompletedLecture(_ course: CourseDetail) -> Lecture? {
+        let all = allLectures(course)
+        return all.first { !completedLectureIds.contains($0.lectureId) } ?? all.first
     }
 
     private func loadCourse() async {
         do {
             course = try await APIService.shared.getCourseDetail(courseId: courseId)
-            if let first = course.flatMap({ firstLecture($0) }) {
-                selectedLecture = first
+            await loadWatchHistory()
+            // 미완료 첫 강의 자동 선택
+            if let c = course {
+                selectedLecture = firstUncompletedLecture(c)
             }
         } catch {
             print("강의 로드 실패: \(error)")
         }
         isLoading = false
+    }
+
+    private func loadWatchHistory() async {
+        guard let userId = authManager.currentUserId else { return }
+        do {
+            let history = try await APIService.shared.getWatchHistory(userId: userId)
+            // lastPosition이 playTime과 같으면 완료로 판단
+            if let c = course {
+                let allLecs = allLectures(c)
+                var completed = Set<Int>()
+                for h in history {
+                    if let lec = allLecs.first(where: { $0.lectureId == h.lectureId }) {
+                        if h.lastPosition >= lec.playTime {
+                            completed.insert(h.lectureId)
+                        }
+                    }
+                }
+                completedLectureIds = completed
+            }
+        } catch {
+            print("시청 이력 로드 실패: \(error)")
+        }
     }
 }

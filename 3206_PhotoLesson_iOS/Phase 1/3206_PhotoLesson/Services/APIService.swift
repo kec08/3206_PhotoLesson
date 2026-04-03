@@ -221,6 +221,10 @@ class APIService {
         return try await request(endpoint: "/lectures/\(lectureId)/watch-history", method: "POST", body: body)
     }
 
+    func getWatchHistory(userId: Int) async throws -> [WatchHistoryResponse] {
+        return try await request(endpoint: "/users/\(userId)/watch-history")
+    }
+
     // MARK: - Enrollment
 
     func enroll(courseId: Int) async throws -> EnrollmentResponse {
