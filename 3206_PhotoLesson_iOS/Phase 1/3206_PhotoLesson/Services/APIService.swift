@@ -25,8 +25,8 @@ enum APIError: LocalizedError, Sendable {
 class APIService {
     static let shared = APIService()
 
-    // TODO: 실제 서버 주소로 변경 (현재 로컬 Mac IP)
-    private let serverHost = "http://172.28.15.240:8080"
+    // ngrok 공개 URL (Wi-Fi 변경 무관, https)
+    private let serverHost = "https://nonpunitive-unsuperlatively-josefine.ngrok-free.dev"
     private var baseURL: String { serverHost + "/api/v1" }
 
     private let decoder: JSONDecoder = {
