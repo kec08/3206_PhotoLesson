@@ -3,6 +3,9 @@ import SwiftUI
 struct PortfolioListView: View {
     @State private var portfolios: [Portfolio] = []
     @State private var isLoading = true
+    @State private var isLoadingMore = false
+    @State private var currentPage = 0
+    @State private var isLastPage = false
     @State private var showCreateSheet = false
     @State private var newName = ""
     @State private var newDescription = ""
@@ -32,6 +35,16 @@ struct PortfolioListView: View {
                                     PortfolioCard(portfolio: portfolio)
                                 }
                                 .buttonStyle(.plain)
+                                .onAppear {
+                                    if portfolio.id == portfolios.last?.id {
+                                        Task { await loadMore() }
+                                    }
+                                }
+                            }
+
+                            if isLoadingMore {
+                                ProgressView()
+                                    .padding()
                             }
                         }
                         .padding()
@@ -49,7 +62,11 @@ struct PortfolioListView: View {
                 }
             }
             .task { await loadPortfolios() }
-            .refreshable { await loadPortfolios() }
+            .refreshable {
+                currentPage = 0
+                isLastPage = false
+                await loadPortfolios()
+            }
             .sheet(isPresented: $showCreateSheet) {
                 createPortfolioSheet
             }
@@ -86,13 +103,29 @@ struct PortfolioListView: View {
 
     private func loadPortfolios() async {
         isLoading = true
+        currentPage = 0
         do {
-            let response = try await APIService.shared.getPortfolios()
+            let response = try await APIService.shared.getPortfolios(page: 0)
             portfolios = response.content
+            isLastPage = currentPage >= response.totalPages - 1
         } catch {
-            print("포트폴리오 로드 실패: \(error)")
+            // 에러 처리
         }
         isLoading = false
+    }
+
+    private func loadMore() async {
+        guard !isLoadingMore && !isLastPage else { return }
+        isLoadingMore = true
+        currentPage += 1
+        do {
+            let response = try await APIService.shared.getPortfolios(page: currentPage)
+            portfolios.append(contentsOf: response.content)
+            isLastPage = currentPage >= response.totalPages - 1
+        } catch {
+            currentPage -= 1
+        }
+        isLoadingMore = false
     }
 
     private func createPortfolio() async {
@@ -105,7 +138,7 @@ struct PortfolioListView: View {
             showCreateSheet = false
             resetForm()
         } catch {
-            print("포트폴리오 생성 실패: \(error)")
+            // 에러 처리
         }
     }
 
@@ -135,30 +168,33 @@ struct PortfolioCard: View {
     var body: some View {
         HStack(spacing: 16) {
             // 썸네일: 첫 번째 이미지 or 아이콘
-            Group {
-                if let urlStr = firstImageUrl,
-                   let fullUrl = APIService.shared.fullImageURL(urlStr),
-                   let url = URL(string: fullUrl) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let img):
-                            img.resizable().scaledToFill()
-                        default:
+            Color.clear
+                .frame(width: 70, height: 70)
+                .overlay(
+                    Group {
+                        if let urlStr = firstImageUrl,
+                           let fullUrl = APIService.shared.fullImageURL(urlStr),
+                           let url = URL(string: fullUrl) {
+                            AsyncImage(url: url) { phase in
+                                switch phase {
+                                case .success(let img):
+                                    img.resizable().scaledToFill()
+                                default:
+                                    Color(.systemGray5)
+                                        .overlay { ProgressView() }
+                                }
+                            }
+                        } else {
                             Color(.systemGray5)
-                                .overlay { ProgressView() }
+                                .overlay {
+                                    Image(systemName: "photo.stack")
+                                        .font(.title2)
+                                        .foregroundStyle(Color.mainCoral)
+                                }
                         }
                     }
-                } else {
-                    Color(.systemGray5)
-                        .overlay {
-                            Image(systemName: "photo.stack")
-                                .font(.title2)
-                                .foregroundStyle(Color.mainCoral)
-                        }
-                }
-            }
-            .frame(width: 70, height: 70)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 12))
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(portfolio.portfolioName)
@@ -189,7 +225,6 @@ struct PortfolioCard: View {
         .background(Color(.systemGray6))
         .cornerRadius(16)
         .task {
-            // 첫 번째 이미지 로드
             do {
                 let images = try await APIService.shared.getPortfolioImages(portfolioId: portfolio.portfolioId)
                 firstImageUrl = images.first?.thumbnailUrl ?? images.first?.imageUrl

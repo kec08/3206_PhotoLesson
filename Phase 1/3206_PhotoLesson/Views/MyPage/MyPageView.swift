@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 struct MyPageView: View {
     @EnvironmentObject var authManager: AuthManager
@@ -10,21 +11,19 @@ struct MyPageView: View {
     @State private var portfolioData: [(portfolio: Portfolio, images: [PortfolioImage])] = []
     @State private var showEditProfile = false
     @State private var editName = ""
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var isUploadingPhoto = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
-                    // 프로필 섹션
                     profileSection
-
-                    // 전체 학습 현황
                     overallProgressSection(progressData)
 
                     Divider()
                         .padding(.horizontal)
 
-                    // 인스타그램 피드 스타일 포트폴리오
                     portfolioFeedSection
                 }
                 .padding(.vertical)
@@ -42,6 +41,11 @@ struct MyPageView: View {
             .refreshable { await loadData() }
             .sheet(isPresented: $showEditProfile) {
                 editProfileSheet
+            }
+            .onChange(of: selectedPhotoItem) { _, newValue in
+                if let item = newValue {
+                    Task { await uploadProfileImage(item: item) }
+                }
             }
         }
     }
@@ -89,22 +93,69 @@ struct MyPageView: View {
             user = try await APIService.shared.updateUser(userId: userId, fullName: editName, profileImageUrl: nil)
             showEditProfile = false
         } catch {
-            print("프로필 수정 실패: \(error)")
+            // 에러 처리
         }
+    }
+
+    private func uploadProfileImage(item: PhotosPickerItem) async {
+        isUploadingPhoto = true
+        guard let userId = authManager.currentUserId else {
+            isUploadingPhoto = false
+            return
+        }
+        do {
+            if let data = try await item.loadTransferable(type: Data.self) {
+                // HEIC → JPEG 변환
+                let jpegData: Data
+                if let uiImage = UIImage(data: data),
+                   let converted = uiImage.jpegData(compressionQuality: 0.8) {
+                    jpegData = converted
+                } else {
+                    jpegData = data
+                }
+                user = try await APIService.shared.uploadProfileImage(userId: userId, imageData: jpegData)
+            }
+        } catch {
+            // 에러 처리
+        }
+        selectedPhotoItem = nil
+        isUploadingPhoto = false
     }
 
     private var profileSection: some View {
         HStack(spacing: 16) {
-            if let urlStr = user?.profileImageUrl, let url = URL(string: urlStr) {
-                AsyncImage(url: url) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: {
-                    profilePlaceholder
+            // 프로필 이미지 (탭하면 PhotosPicker)
+            PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                ZStack(alignment: .bottomTrailing) {
+                    if isUploadingPhoto {
+                        Circle()
+                            .fill(Color(.systemGray5))
+                            .frame(width: 70, height: 70)
+                            .overlay { ProgressView() }
+                    } else if let urlStr = user?.profileImageUrl,
+                              let fullUrl = APIService.shared.fullImageURL(urlStr),
+                              let url = URL(string: fullUrl) {
+                        AsyncImage(url: url) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            profilePlaceholder
+                        }
+                        .frame(width: 70, height: 70)
+                        .clipShape(Circle())
+                    } else {
+                        profilePlaceholder
+                    }
+
+                    // 카메라 뱃지
+                    Circle()
+                        .fill(Color.mainCoral)
+                        .frame(width: 22, height: 22)
+                        .overlay {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.white)
+                        }
                 }
-                .frame(width: 70, height: 70)
-                .clipShape(Circle())
-            } else {
-                profilePlaceholder
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -186,7 +237,6 @@ struct MyPageView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 40)
             } else {
-                // 인스타 프로필처럼 3열 그리드 (대표 이미지 1장씩)
                 LazyVGrid(columns: [
                     GridItem(.flexible(), spacing: 2),
                     GridItem(.flexible(), spacing: 2),
@@ -194,21 +244,25 @@ struct MyPageView: View {
                 ], spacing: 2) {
                     ForEach(portfolioData, id: \.portfolio.portfolioId) { item in
                         NavigationLink(destination: PortfolioFeedView(portfolio: item.portfolio, images: item.images)) {
-                            // 대표 이미지 (첫 번째)
                             if let firstImage = item.images.first,
                                let urlStr = APIService.shared.fullImageURL(firstImage.thumbnailUrl ?? firstImage.imageUrl),
                                let url = URL(string: urlStr) {
-                                AsyncImage(url: url) { phase in
-                                    switch phase {
-                                    case .success(let img):
-                                        img.resizable().scaledToFill()
-                                    default:
-                                        Color(.systemGray5)
-                                    }
-                                }
-                                .frame(height: 130)
-                                .frame(maxWidth: .infinity)
-                                .clipped()
+                                Color.clear
+                                    .aspectRatio(1, contentMode: .fit)
+                                    .overlay(
+                                        AsyncImage(url: url) { phase in
+                                            switch phase {
+                                            case .success(let img):
+                                                img.resizable().scaledToFill()
+                                            default:
+                                                Color(.systemGray5)
+                                            }
+                                        }
+                                    )
+                                    .clipped()
+                            } else {
+                                Color(.systemGray5)
+                                    .aspectRatio(1, contentMode: .fit)
                             }
                         }
                     }
@@ -230,10 +284,9 @@ struct MyPageView: View {
             user = try await userTask
             progressData = try await progressTask
         } catch {
-            print("마이페이지 데이터 로드 실패: \(error)")
+            // 에러 처리
         }
 
-        // 포트폴리오 데이터 로드 (각 포트폴리오의 이미지도 함께)
         do {
             let portfolioResponse = try await APIService.shared.getPortfolios()
             portfolios = portfolioResponse.content
@@ -246,7 +299,7 @@ struct MyPageView: View {
             }
             portfolioData = loadedData
         } catch {
-            print("포트폴리오 데이터 로드 실패: \(error)")
+            // 에러 처리
         }
 
         isLoading = false

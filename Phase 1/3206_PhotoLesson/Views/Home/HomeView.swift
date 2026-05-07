@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 struct HomeView: View {
     @State private var courses: [CourseListItem] = []
@@ -8,80 +9,154 @@ struct HomeView: View {
     @State private var currentPage = 0
     @State private var totalPages = 0
     @State private var isSearching = false
+    @State private var recentSearches: [String] = UserDefaults.standard.stringArray(forKey: "recentSearches") ?? []
+    @State private var searchTask: Task<Void, Never>?
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    private var columns: [GridItem] {
+        let count = sizeClass == .regular ? 3 : 2
+        return Array(repeating: GridItem(.flexible(), spacing: 12), count: count)
+    }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // 카테고리 필터
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        CategoryChip(title: "전체", isSelected: selectedCategory == nil) {
-                            selectedCategory = nil
-                            Task { await loadCourses() }
-                        }
-                        ForEach(CourseCategory.allCases, id: \.self) { category in
-                            CategoryChip(
-                                title: category.displayName,
-                                isSelected: selectedCategory == category
-                            ) {
-                                selectedCategory = category
+                // 상단 헤더
+                VStack(spacing: 0) {
+                    // 카테고리 필터
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            CategoryChip(title: "전체", isSelected: selectedCategory == nil) {
+                                selectedCategory = nil
                                 Task { await loadCourses() }
                             }
+                            ForEach(CourseCategory.allCases, id: \.self) { category in
+                                CategoryChip(
+                                    title: category.displayName,
+                                    isSelected: selectedCategory == category
+                                ) {
+                                    selectedCategory = category
+                                    Task { await loadCourses() }
+                                }
+                            }
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
                     }
-                    .padding(.horizontal)
-                    .padding(.vertical, 10)
-                }
-                .animation(.spring(), value: selectedCategory)
+                    .background(Color(.systemBackground))
 
-                // 강의 목록
+                    Divider().opacity(0.5)
+                }
+
+                // 콘텐츠
                 if isLoading && courses.isEmpty {
                     Spacer()
-                    ProgressView("강의를 불러오는 중...")
+                    VStack(spacing: 16) {
+                        ProgressView()
+                            .scaleEffect(1.2)
+                        Text("강의를 불러오는 중...")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                } else if courses.isEmpty && isSearching {
+                    Spacer()
+                    VStack(spacing: 16) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 48, weight: .light))
+                            .foregroundStyle(.quaternary)
+                        Text("검색 결과가 없습니다")
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                        Text("다른 키워드로 검색해보세요")
+                            .font(.subheadline)
+                            .foregroundStyle(.tertiary)
+                    }
                     Spacer()
                 } else if courses.isEmpty {
                     Spacer()
-                    VStack(spacing: 12) {
+                    VStack(spacing: 16) {
                         Image(systemName: "book.closed")
-                            .font(.system(size: 50))
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 48, weight: .light))
+                            .foregroundStyle(.quaternary)
                         Text("강의가 없습니다")
+                            .font(.headline)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
                 } else {
                     ScrollView {
-                        LazyVStack(spacing: 8) {
+                        LazyVGrid(columns: columns, spacing: 16) {
                             ForEach(courses) { course in
                                 NavigationLink(destination: CourseDetailView(courseId: course.courseId)) {
                                     CourseCardView(course: course)
                                 }
                                 .buttonStyle(.plain)
-                                .transition(.opacity.combined(with: .move(edge: .bottom)))
                             }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                        .padding(.bottom, 8)
 
-                            // 페이지네이션
-                            if currentPage < totalPages - 1 {
-                                Button("더 보기") {
-                                    currentPage += 1
-                                    Task { await loadMoreCourses() }
+                        // 더 보기
+                        if currentPage < totalPages - 1 {
+                            Button {
+                                currentPage += 1
+                                Task { await loadMoreCourses() }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Text("더 보기")
+                                    Image(systemName: "chevron.down")
+                                        .font(.caption)
                                 }
-                                .padding(.horizontal)
-                                .padding(.vertical, 12)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Color.mainCoral)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 44)
+                                .background(Color.mainCoral.opacity(0.08))
+                                .cornerRadius(10)
                             }
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 20)
                         }
                     }
                 }
             }
             .navigationTitle("PhotoLesson")
             .searchable(text: $searchText, prompt: "강의 검색")
+            .searchSuggestions {
+                if searchText.isEmpty && !recentSearches.isEmpty {
+                    SwiftUI.Section("최근 검색어") {
+                        ForEach(recentSearches, id: \.self) { term in
+                            Button {
+                                searchText = term
+                                Task { await searchCourses() }
+                            } label: {
+                                Label(term, systemImage: "clock.arrow.circlepath")
+                            }
+                        }
+                        Button("검색 기록 삭제", role: .destructive) {
+                            recentSearches.removeAll()
+                            UserDefaults.standard.removeObject(forKey: "recentSearches")
+                        }
+                    }
+                }
+            }
             .onSubmit(of: .search) {
                 Task { await searchCourses() }
             }
             .onChange(of: searchText) { _, newValue in
                 if newValue.isEmpty && isSearching {
                     isSearching = false
+                    searchTask?.cancel()
                     Task { await loadCourses() }
+                } else if !newValue.isEmpty {
+                    searchTask?.cancel()
+                    searchTask = Task {
+                        try? await Task.sleep(nanoseconds: 500_000_000)
+                        guard !Task.isCancelled else { return }
+                        await searchCourses()
+                    }
                 }
             }
             .task { await loadCourses() }
@@ -96,20 +171,17 @@ struct HomeView: View {
             courses = response.content
             totalPages = response.totalPages
         } catch {
-            print("강의 목록 로드 실패: \(error)")
+            // 에러 처리
         }
         isLoading = false
     }
 
     private func loadMoreCourses() async {
         do {
-            let response = try await APIService.shared.getCourses(
-                category: selectedCategory,
-                page: currentPage
-            )
+            let response = try await APIService.shared.getCourses(category: selectedCategory, page: currentPage)
             courses.append(contentsOf: response.content)
         } catch {
-            print("추가 로드 실패: \(error)")
+            // 에러 처리
         }
     }
 
@@ -121,10 +193,20 @@ struct HomeView: View {
             let response = try await APIService.shared.searchCourses(keyword: searchText)
             courses = response.content
             totalPages = response.totalPages
+            saveRecentSearch(searchText)
         } catch {
-            print("검색 실패: \(error)")
+            // 에러 처리
         }
         isLoading = false
+    }
+
+    private func saveRecentSearch(_ term: String) {
+        var searches = recentSearches
+        searches.removeAll { $0 == term }
+        searches.insert(term, at: 0)
+        if searches.count > 10 { searches = Array(searches.prefix(10)) }
+        recentSearches = searches
+        UserDefaults.standard.set(searches, forKey: "recentSearches")
     }
 }
 
@@ -141,13 +223,16 @@ struct CategoryChip: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.subheadline)
-                .fontWeight(isSelected ? .semibold : .regular)
+                .font(.system(size: 14, weight: isSelected ? .bold : .medium))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
                 .background(isSelected ? Color.mainCoral : Color(.systemGray6))
                 .foregroundStyle(isSelected ? .white : .primary)
                 .cornerRadius(20)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(isSelected ? Color.clear : Color(.systemGray4), lineWidth: 0.5)
+                )
         }
     }
 }

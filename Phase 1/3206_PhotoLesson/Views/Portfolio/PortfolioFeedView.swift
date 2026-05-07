@@ -14,22 +14,24 @@ struct PortfolioFeedView: View {
                         ForEach(images) { image in
                             if let urlStr = APIService.shared.fullImageURL(image.thumbnailUrl ?? image.imageUrl),
                                let url = URL(string: urlStr) {
-                                AsyncImage(url: url) { phase in
-                                    switch phase {
-                                    case .success(let img):
-                                        img.resizable().scaledToFill()
-                                    default:
-                                        Color(.systemGray5)
-                                            .overlay { ProgressView() }
-                                    }
-                                }
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 400)
-                                .clipped()
+                                Color.clear
+                                    .aspectRatio(1, contentMode: .fit)
+                                    .overlay(
+                                        AsyncImage(url: url) { phase in
+                                            switch phase {
+                                            case .success(let img):
+                                                img.resizable().scaledToFill()
+                                            default:
+                                                Color(.systemGray5)
+                                                    .overlay { ProgressView() }
+                                            }
+                                        }
+                                    )
+                                    .clipShape(Rectangle())
                             }
                         }
                     }
-                    .frame(height: 400)
+                    .aspectRatio(1, contentMode: .fit)
                     .tabViewStyle(.page(indexDisplayMode: .always))
                 }
 

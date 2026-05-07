@@ -43,23 +43,32 @@ struct MyCoursesView: View {
     }
 
     private func enrolledCard(_ course: EnrolledCourse) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(course.courseTitle)
-                .font(.system(size: 16, weight: .semibold))
-                .lineLimit(2)
-                .foregroundStyle(.primary)
+        HStack(spacing: 16) {
+            // 원형 진도율
+            CircularProgressView(
+                progress: course.progressPercent / 100.0,
+                lineWidth: 6
+            )
+            .frame(width: 56, height: 56)
 
-            ProgressView(value: course.progressPercent, total: 100)
-                .tint(Color.mainCoral)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(course.courseTitle)
+                    .font(.system(size: 16, weight: .semibold))
+                    .lineLimit(2)
+                    .foregroundStyle(.primary)
 
-            HStack {
-                Text("\(course.completedLectures)/\(course.totalLectures) 레슨")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("\(Int(course.progressPercent))%")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(Color.mainCoral)
+                ProgressView(value: course.progressPercent, total: 100)
+                    .tint(Color.mainCoral)
+
+                HStack {
+                    Text("\(course.completedLectures)/\(course.totalLectures) 레슨")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(Int(course.progressPercent))%")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.mainCoral)
+                }
             }
         }
         .padding()
@@ -76,7 +85,7 @@ struct MyCoursesView: View {
         do {
             progressData = try await APIService.shared.getProgress(userId: userId)
         } catch {
-            print("수강 정보 로드 실패: \(error)")
+            // 에러 처리
         }
         isLoading = false
     }
@@ -86,71 +95,32 @@ struct MyCoursesView: View {
 struct CoursePlayerView: View {
     let courseId: Int
     let courseTitle: String
+    @EnvironmentObject var authManager: AuthManager
 
     @State private var course: CourseDetail?
     @State private var isLoading = true
     @State private var selectedLecture: Lecture?
+    @State private var completedLectureIds: Set<Int> = []
 
     var body: some View {
-        VStack(spacing: 0) {
+        ZStack(alignment: .bottom) {
             if isLoading {
                 ProgressView()
-                    .frame(maxHeight: .infinity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let course = course {
-                // 상단: 선택된 영상 or 첫 번째 영상
-                if let lecture = selectedLecture ?? firstLecture(course) {
-                    VideoPlayerView(lecture: lecture, courseTitle: course.title)
-                        .frame(height: 280)
-                }
-
-                // 하단: 강의 목록 (재생목록)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(course.title)
-                            .font(.system(size: 18, weight: .bold))
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-
-                        ForEach(course.sections) { section in
-                            VStack(alignment: .leading, spacing: 0) {
-                                Text(section.title)
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(.secondary)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-
-                                if let lectures = section.lectures {
-                                    ForEach(lectures) { lecture in
-                                        Button {
-                                            selectedLecture = lecture
-                                        } label: {
-                                            HStack(spacing: 12) {
-                                                Image(systemName: selectedLecture?.lectureId == lecture.lectureId ? "play.circle.fill" : "play.circle")
-                                                    .foregroundStyle(selectedLecture?.lectureId == lecture.lectureId ? Color.mainCoral : .secondary)
-                                                    .font(.title3)
-
-                                                VStack(alignment: .leading, spacing: 2) {
-                                                    Text(lecture.title)
-                                                        .font(.system(size: 14, weight: selectedLecture?.lectureId == lecture.lectureId ? .bold : .regular))
-                                                        .foregroundStyle(selectedLecture?.lectureId == lecture.lectureId ? Color.mainCoral : .primary)
-                                                    Text(lecture.formattedPlayTime)
-                                                        .font(.caption)
-                                                        .foregroundStyle(.secondary)
-                                                }
-
-                                                Spacer()
-                                            }
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
-                                            .background(selectedLecture?.lectureId == lecture.lectureId ? Color.mainCoral.opacity(0.08) : Color.clear)
-                                        }
-
-                                        Divider().padding(.leading, 52)
-                                    }
-                                }
-                            }
+                if let lecture = selectedLecture ?? firstUncompletedLecture(course) {
+                    VideoPlayerView(
+                        lecture: lecture,
+                        courseTitle: course.title,
+                        allLectures: allLectures(course),
+                        onCompleted: { completedId in
+                            completedLectureIds.insert(completedId)
+                        },
+                        onSelectLecture: { lec in
+                            selectedLecture = lec
                         }
-                    }
+                    )
+                    .id(lecture.lectureId)
                 }
             }
         }
@@ -159,20 +129,50 @@ struct CoursePlayerView: View {
         .task { await loadCourse() }
     }
 
-    private func firstLecture(_ course: CourseDetail) -> Lecture? {
-        course.sections.first?.lectures?.first
+    // 모든 레슨 ID 목록
+    private func allLectures(_ course: CourseDetail) -> [Lecture] {
+        course.sections.flatMap { $0.lectures ?? [] }
+    }
+
+    // 미완료 첫 번째 강의 찾기
+    private func firstUncompletedLecture(_ course: CourseDetail) -> Lecture? {
+        let all = allLectures(course)
+        return all.first { !completedLectureIds.contains($0.lectureId) } ?? all.first
     }
 
     private func loadCourse() async {
         do {
             course = try await APIService.shared.getCourseDetail(courseId: courseId)
-            // 첫 번째 강의 자동 선택
-            if let first = course.flatMap({ firstLecture($0) }) {
-                selectedLecture = first
+            await loadWatchHistory()
+            // 미완료 첫 강의 자동 선택
+            if let c = course {
+                selectedLecture = firstUncompletedLecture(c)
             }
         } catch {
-            print("강의 로드 실패: \(error)")
+            // 에러 처리
         }
         isLoading = false
+    }
+
+    private func loadWatchHistory() async {
+        guard let userId = authManager.currentUserId else { return }
+        do {
+            let history = try await APIService.shared.getWatchHistory(userId: userId)
+            // lastPosition이 playTime과 같으면 완료로 판단
+            if let c = course {
+                let allLecs = allLectures(c)
+                var completed = Set<Int>()
+                for h in history {
+                    if let lec = allLecs.first(where: { $0.lectureId == h.lectureId }) {
+                        if h.lastPosition >= lec.playTime {
+                            completed.insert(h.lectureId)
+                        }
+                    }
+                }
+                completedLectureIds = completed
+            }
+        } catch {
+            // 에러 처리
+        }
     }
 }

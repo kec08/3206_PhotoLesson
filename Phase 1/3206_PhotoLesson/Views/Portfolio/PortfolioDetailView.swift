@@ -99,34 +99,36 @@ struct PortfolioDetailView: View {
     private func imageCell(_ image: PortfolioImage) -> some View {
         if let urlStr = APIService.shared.fullImageURL(image.thumbnailUrl ?? image.imageUrl),
            let url = URL(string: urlStr) {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let img):
-                    img
-                        .resizable()
-                        .scaledToFill()
-                case .failure:
-                    Color(.systemGray5)
-                        .overlay {
-                            Image(systemName: "exclamationmark.triangle")
-                                .foregroundStyle(.secondary)
+            Color.clear
+                .aspectRatio(1, contentMode: .fit)
+                .overlay(
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let img):
+                            img
+                                .resizable()
+                                .scaledToFill()
+                        case .failure:
+                            Color(.systemGray5)
+                                .overlay {
+                                    Image(systemName: "exclamationmark.triangle")
+                                        .foregroundStyle(.secondary)
+                                }
+                        default:
+                            Color(.systemGray5)
+                                .overlay { ProgressView() }
                         }
-                default:
-                    Color(.systemGray5)
-                        .overlay { ProgressView() }
+                    }
+                )
+                .clipShape(Rectangle())
+                .contextMenu {
+                    Button(role: .destructive) {
+                        imageToDelete = image
+                        showDeleteAlert = true
+                    } label: {
+                        Label("삭제", systemImage: "trash")
+                    }
                 }
-            }
-            .frame(height: 120)
-            .frame(maxWidth: .infinity)
-            .clipped()
-            .contextMenu {
-                Button(role: .destructive) {
-                    imageToDelete = image
-                    showDeleteAlert = true
-                } label: {
-                    Label("삭제", systemImage: "trash")
-                }
-            }
         }
     }
 
@@ -134,7 +136,7 @@ struct PortfolioDetailView: View {
         do {
             images = try await APIService.shared.getPortfolioImages(portfolioId: portfolio.portfolioId)
         } catch {
-            print("이미지 로드 실패: \(error)")
+            // 에러 처리
         }
         isLoading = false
     }
@@ -152,7 +154,7 @@ struct PortfolioDetailView: View {
                 images.insert(newImage, at: 0)
             }
         } catch {
-            print("업로드 실패: \(error)")
+            // 에러 처리
         }
         selectedItem = nil
         isUploading = false
@@ -166,7 +168,7 @@ struct PortfolioDetailView: View {
             )
             images.removeAll { $0.imageId == image.imageId }
         } catch {
-            print("삭제 실패: \(error)")
+            // 에러 처리
         }
     }
 }
