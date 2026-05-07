@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
+
 public interface CourseRepository extends JpaRepository<Course, Long> {
 
     Page<Course> findByCategory(String category, Pageable pageable);
@@ -14,4 +16,6 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
     @Query("SELECT c FROM Course c WHERE LOWER(c.title) LIKE LOWER(CONCAT('%', :keyword, '%')) " +
            "OR LOWER(c.description) LIKE LOWER(CONCAT('%', :keyword, '%'))")
     Page<Course> searchByKeyword(@Param("keyword") String keyword, Pageable pageable);
+
+    List<Course> findByInstructorNameOrderByCreatedAtDesc(String instructorName);
 }

@@ -6,6 +6,7 @@ import com.photolesson.backend.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/v1/users")
@@ -24,6 +25,13 @@ public class UserController {
     public ResponseEntity<UserDto> updateUser(@PathVariable Long userId,
                                               @RequestBody UserUpdateRequest request) {
         UserDto user = userService.updateUser(userId, request);
+        return ResponseEntity.ok(user);
+    }
+
+    @PostMapping("/{userId}/profile-image")
+    public ResponseEntity<UserDto> uploadProfileImage(@PathVariable Long userId,
+                                                      @RequestParam("file") MultipartFile file) {
+        UserDto user = userService.uploadProfileImage(userId, file);
         return ResponseEntity.ok(user);
     }
 }

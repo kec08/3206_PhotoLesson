@@ -34,7 +34,7 @@ public class DataSeeder implements CommandLineRunner {
                 .email("admin@photolesson.com")
                 .password(passwordEncoder.encode("admin1234"))
                 .fullName("관리자")
-                .role("INSTRUCTOR")
+                .role("ADMIN")
                 .build());
 
         // === Course 1: 인물 사진 기초 ===

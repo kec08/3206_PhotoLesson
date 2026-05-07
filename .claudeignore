@@ -1,0 +1,66 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.iws
+*.iml
+*.ipr
+.vscode/
+xcuserdata/
+
+# Gradle
+.gradle/
+**/build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# Spring Boot
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings/
+.springBeans
+.sts4-cache
+bin/
+out/
+
+# Uploads
+**/uploads/
+
+# Xcode
+DerivedData/
+*.xcodeproj/project.xcworkspace/
+*.xcodeproj/xcuserdata/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+Package.resolved
+
+# Binary / Assets
+*.jar
+*.war
+*.zip
+*.tar.gz
+*.jpg
+*.jpeg
+*.png
+*.gif
+
+# Docs
+*.pages
+*.pdf
+*.docx
+
+# Git
+.git/

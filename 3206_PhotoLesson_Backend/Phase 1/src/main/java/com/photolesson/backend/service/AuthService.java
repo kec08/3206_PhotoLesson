@@ -49,7 +49,7 @@ public class AuthService {
             throw CustomException.unauthorized("이메일 또는 비밀번호가 일치하지 않습니다.");
         }
 
-        String accessToken = jwtTokenProvider.createAccessToken(member.getId(), member.getEmail());
+        String accessToken = jwtTokenProvider.createAccessToken(member.getId(), member.getEmail(), member.getRole());
         String refreshToken = jwtTokenProvider.createRefreshToken(member.getId());
 
         return LoginResponse.builder()
@@ -65,7 +65,7 @@ public class AuthService {
         Member member = memberRepository.findById(userId)
                 .orElseThrow(() -> CustomException.unauthorized("사용자를 찾을 수 없습니다."));
 
-        String accessToken = jwtTokenProvider.createAccessToken(member.getId(), member.getEmail());
+        String accessToken = jwtTokenProvider.createAccessToken(member.getId(), member.getEmail(), member.getRole());
         String refreshToken = jwtTokenProvider.createRefreshToken(member.getId());
 
         return LoginResponse.builder()

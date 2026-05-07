@@ -10,4 +10,6 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
     List<Enrollment> findByMemberId(Long memberId);
     Optional<Enrollment> findByMemberIdAndCourseId(Long memberId, Long courseId);
     boolean existsByMemberIdAndCourseId(Long memberId, Long courseId);
+    List<Enrollment> findByCourseId(Long courseId);
+    long countByCourseId(Long courseId);
 }

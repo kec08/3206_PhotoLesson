@@ -8,6 +8,7 @@ enum APIError: LocalizedError, Sendable {
     case serverError(String)
     case decodingError(Error)
     case networkError(Error)
+    case noConnection
 
     var errorDescription: String? {
         switch self {
@@ -18,6 +19,7 @@ enum APIError: LocalizedError, Sendable {
         case .serverError(let msg): return msg
         case .decodingError: return "데이터 처리 오류입니다."
         case .networkError(let err): return err.localizedDescription
+        case .noConnection: return "네트워크 연결을 확인해주세요."
         }
     }
 }
@@ -25,7 +27,7 @@ enum APIError: LocalizedError, Sendable {
 class APIService {
     static let shared = APIService()
 
-    // ngrok 공개 URL (Wi-Fi 변경 무관, https)
+    // ngrok 배포 URL (2026-05-07)
     private let serverHost = "https://nonpunitive-unsuperlatively-josefine.ngrok-free.dev"
     private var baseURL: String { serverHost + "/api/v1" }
 
@@ -76,7 +78,15 @@ class APIService {
             urlRequest.httpBody = try JSONEncoder().encode(body)
         }
 
-        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: urlRequest)
+        } catch let urlError as URLError where urlError.code == .notConnectedToInternet || urlError.code == .networkConnectionLost {
+            throw APIError.noConnection
+        } catch {
+            throw APIError.networkError(error)
+        }
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIError.invalidResponse
@@ -90,12 +100,10 @@ class APIService {
                 throw APIError.decodingError(error)
             }
         case 401:
-            // 인증 불필요한 요청(로그인/회원가입)은 그냥 에러 반환
             if !requiresAuth {
-                let errorResp = try? decoder.decode(ErrorResponse.self, from: data)
-                throw APIError.serverError(errorResp?.message ?? "이메일 또는 비밀번호가 일치하지 않습니다.")
+                let msg = APIService.parseErrorMessage(from: data) ?? "이메일 또는 비밀번호가 일치하지 않습니다."
+                throw APIError.serverError(msg)
             }
-            // 토큰 만료 → 재발급 시도 (1번만)
             if !isRetry {
                 let refreshed = await refreshToken()
                 if refreshed {
@@ -109,15 +117,14 @@ class APIService {
                     )
                 }
             }
-            // 재발급 실패 → 로그아웃
             await AuthManager.shared.logout()
             throw APIError.unauthorized
         case 409:
-            let errorResp = try? decoder.decode(ErrorResponse.self, from: data)
-            throw APIError.conflict(errorResp?.message ?? "충돌이 발생했습니다.")
+            let msg = APIService.parseErrorMessage(from: data) ?? "충돌이 발생했습니다."
+            throw APIError.conflict(msg)
         default:
-            let errorResp = try? decoder.decode(ErrorResponse.self, from: data)
-            throw APIError.serverError(errorResp?.message ?? "서버 오류가 발생했습니다.")
+            let msg = APIService.parseErrorMessage(from: data) ?? "서버 오류가 발생했습니다."
+            throw APIError.serverError(msg)
         }
     }
 
@@ -173,6 +180,37 @@ class APIService {
         return try await request(endpoint: "/users/\(userId)", method: "PUT", body: body)
     }
 
+    func uploadProfileImage(userId: Int, imageData: Data) async throws -> User {
+        guard let url = URL(string: baseURL + "/users/\(userId)/profile-image") else {
+            throw APIError.invalidURL
+        }
+
+        let boundary = UUID().uuidString
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        if let token = await AuthManager.shared.accessToken {
+            urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"profile.jpg\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+        body.append(imageData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        urlRequest.httpBody = body
+
+        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw APIError.invalidResponse
+        }
+
+        return try decoder.decode(User.self, from: data)
+    }
+
     // MARK: - Courses
 
     func getCourses(category: CourseCategory? = nil, page: Int = 0, size: Int = 10) async throws -> PageResponse<CourseListItem> {
@@ -188,7 +226,8 @@ class APIService {
     }
 
     func getCourseDetail(courseId: Int) async throws -> CourseDetail {
-        return try await request(endpoint: "/courses/\(courseId)", requiresAuth: false)
+        let loggedIn = await AuthManager.shared.isLoggedIn
+        return try await request(endpoint: "/courses/\(courseId)", requiresAuth: loggedIn)
     }
 
     func searchCourses(keyword: String, page: Int = 0, size: Int = 10) async throws -> PageResponse<CourseListItem> {
@@ -303,3 +342,249 @@ class APIService {
 }
 
 struct EmptyResponse: Codable {}
+
+// MARK: - Admin API
+
+extension APIService {
+    func getAdminUsers() async throws -> [User] {
+        return try await request(endpoint: "/admin/users")
+    }
+
+    func changeUserRole(userId: Int, role: String) async throws -> User {
+        let body = ["role": role]
+        return try await request(endpoint: "/admin/users/\(userId)/role", method: "PATCH", body: body)
+    }
+}
+
+// MARK: - 에러 응답 파싱 (message / error 두 필드 fallback)
+
+extension APIService {
+    static func parseErrorMessage(from data: Data) -> String? {
+        if let resp = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
+            return resp.message
+        }
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let msg = json["error"] as? String ?? json["message"] as? String {
+            return msg
+        }
+        return nil
+    }
+}
+
+// MARK: - Teacher API
+
+extension APIService {
+    // 강의 생성
+    func createTeacherCourse(_ request: TeacherCourseRequest) async throws -> [String: Any] {
+        guard let url = URL(string: baseURL + "/teacher/courses") else { throw APIError.invalidURL }
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let token = await AuthManager.shared.accessToken {
+            urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        urlRequest.httpBody = try JSONEncoder().encode(request)
+
+        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 201 else {
+            let msg = APIService.parseErrorMessage(from: data) ?? "강의 생성에 실패했습니다."
+            throw APIError.serverError(msg)
+        }
+        return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+    }
+
+    // 내 강의 목록
+    func getTeacherCourses() async throws -> [CourseListItem] {
+        return try await request(endpoint: "/teacher/courses")
+    }
+
+    // 강의 수정
+    func updateTeacherCourse(courseId: Int, _ request: TeacherCourseRequest) async throws {
+        let _: [String: String] = try await self.request(endpoint: "/teacher/courses/\(courseId)", method: "PUT", body: request)
+    }
+
+    // 강의 삭제
+    func deleteTeacherCourse(courseId: Int) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/teacher/courses/\(courseId)", method: "DELETE")
+    }
+
+    // 섹션 추가
+    func addSection(courseId: Int, title: String) async throws {
+        let body = ["title": title]
+        let _: [String: String] = try await self.request(endpoint: "/teacher/courses/\(courseId)/sections", method: "POST", body: body)
+    }
+
+    // 섹션 수정
+    func updateSection(sectionId: Int, title: String) async throws {
+        let body = ["title": title]
+        let _: [String: String] = try await self.request(endpoint: "/teacher/sections/\(sectionId)", method: "PUT", body: body)
+    }
+
+    // 섹션 삭제
+    func deleteSection(sectionId: Int) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/teacher/sections/\(sectionId)", method: "DELETE")
+    }
+
+    // 레슨 추가
+    func addLecture(sectionId: Int, title: String, videoUrl: String, playTime: Int) async throws {
+        let body = LectureCreateBody(title: title, videoUrl: videoUrl, playTime: playTime)
+        let _: [String: String] = try await self.request(endpoint: "/teacher/sections/\(sectionId)/lectures", method: "POST", body: body)
+    }
+
+    // 레슨 수정
+    func updateLecture(lectureId: Int, title: String, videoUrl: String, playTime: Int) async throws {
+        let body = LectureCreateBody(title: title, videoUrl: videoUrl, playTime: playTime)
+        let _: [String: String] = try await self.request(endpoint: "/teacher/lectures/\(lectureId)", method: "PUT", body: body)
+    }
+
+    // 레슨 삭제
+    func deleteLecture(lectureId: Int) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/teacher/lectures/\(lectureId)", method: "DELETE")
+    }
+
+    // 수강생 대시보드 (전체)
+    func getTeacherDashboard() async throws -> TeacherDashboard {
+        return try await request(endpoint: "/teacher/dashboard")
+    }
+
+    // 강의별 수강생 상세
+    func getCourseDashboard(courseId: Int) async throws -> CourseDashboard {
+        return try await request(endpoint: "/teacher/courses/\(courseId)/dashboard")
+    }
+
+    // 강의 썸네일 업로드
+    func uploadCourseThumbnail(courseId: Int, imageData: Data) async throws -> String {
+        guard let url = URL(string: baseURL + "/teacher/courses/\(courseId)/thumbnail") else {
+            throw APIError.invalidURL
+        }
+
+        let boundary = UUID().uuidString
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        if let token = await AuthManager.shared.accessToken {
+            urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"thumbnail.jpg\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+        body.append(imageData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        urlRequest.httpBody = body
+
+        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            let msg = APIService.parseErrorMessage(from: data) ?? "썸네일 업로드에 실패했습니다."
+            throw APIError.serverError(msg)
+        }
+
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let thumbnailUrl = json["thumbnailUrl"] as? String {
+            return thumbnailUrl
+        }
+        return ""
+    }
+}
+
+// MARK: - Teacher Models
+
+struct TeacherCourseRequest: Codable {
+    let title: String
+    let description: String
+    let category: String
+    let level: String
+    let price: Int?
+    let thumbnailUrl: String?
+    let sections: [SectionCreateRequest]?
+}
+
+struct SectionCreateRequest: Codable {
+    let title: String
+    let lectures: [LectureCreateRequest]?
+}
+
+struct LectureCreateRequest: Codable {
+    let title: String
+    let videoUrl: String
+    let playTime: Int
+}
+
+struct LectureCreateBody: Codable {
+    let title: String
+    let videoUrl: String
+    let playTime: Int
+}
+
+struct TeacherDashboard: Codable {
+    let totalCourses: Int
+    let totalStudents: Int
+    let totalLectures: Int
+    let courses: [CourseSummary]
+}
+
+struct CourseSummary: Codable, Identifiable {
+    let courseId: Int
+    let title: String
+    let category: String?
+    let studentCount: Int
+    let lectureCount: Int
+    let createdAt: String?
+
+    var id: Int { courseId }
+}
+
+struct CourseDashboard: Codable {
+    let courseId: Int
+    let courseTitle: String
+    let totalStudents: Int
+    let totalLectures: Int
+    let students: [StudentProgress]
+}
+
+struct StudentProgress: Codable, Identifiable {
+    let userId: Int
+    let fullName: String
+    let email: String
+    let completedLectures: Int
+    let totalLectures: Int
+    let progressPercent: Double
+    let enrolledAt: String?
+
+    var id: Int { userId }
+}
+
+// MARK: - 댓글 API
+
+extension APIService {
+    /// 댓글 목록 조회
+    func getComments(lectureId: Int) async throws -> [Comment] {
+        return try await request(
+            endpoint: "/lectures/\(lectureId)/comments",
+            method: "GET",
+            requiresAuth: true
+        )
+    }
+
+    /// 댓글 작성
+    func createComment(lectureId: Int, content: String) async throws -> Comment {
+        return try await request(
+            endpoint: "/lectures/\(lectureId)/comments",
+            method: "POST",
+            body: CommentCreateRequest(content: content),
+            requiresAuth: true
+        )
+    }
+
+    /// 댓글 삭제
+    func deleteComment(commentId: Int) async throws {
+        let _: EmptyResponse = try await request(
+            endpoint: "/comments/\(commentId)",
+            method: "DELETE",
+            requiresAuth: true
+        )
+    }
+}

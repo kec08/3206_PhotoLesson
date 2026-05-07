@@ -43,23 +43,32 @@ struct MyCoursesView: View {
     }
 
     private func enrolledCard(_ course: EnrolledCourse) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(course.courseTitle)
-                .font(.system(size: 16, weight: .semibold))
-                .lineLimit(2)
-                .foregroundStyle(.primary)
+        HStack(spacing: 16) {
+            // 원형 진도율
+            CircularProgressView(
+                progress: course.progressPercent / 100.0,
+                lineWidth: 6
+            )
+            .frame(width: 56, height: 56)
 
-            ProgressView(value: course.progressPercent, total: 100)
-                .tint(Color.mainCoral)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(course.courseTitle)
+                    .font(.system(size: 16, weight: .semibold))
+                    .lineLimit(2)
+                    .foregroundStyle(.primary)
 
-            HStack {
-                Text("\(course.completedLectures)/\(course.totalLectures) 레슨")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("\(Int(course.progressPercent))%")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(Color.mainCoral)
+                ProgressView(value: course.progressPercent, total: 100)
+                    .tint(Color.mainCoral)
+
+                HStack {
+                    Text("\(course.completedLectures)/\(course.totalLectures) 레슨")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(Int(course.progressPercent))%")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.mainCoral)
+                }
             }
         }
         .padding()
@@ -76,7 +85,7 @@ struct MyCoursesView: View {
         do {
             progressData = try await APIService.shared.getProgress(userId: userId)
         } catch {
-            print("수강 정보 로드 실패: \(error)")
+            // 에러 처리
         }
         isLoading = false
     }
@@ -91,7 +100,6 @@ struct CoursePlayerView: View {
     @State private var course: CourseDetail?
     @State private var isLoading = true
     @State private var selectedLecture: Lecture?
-    @State private var showPlaylist = false
     @State private var completedLectureIds: Set<Int> = []
 
     var body: some View {
@@ -100,132 +108,25 @@ struct CoursePlayerView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let course = course {
-                VStack(spacing: 0) {
-                    if let lecture = selectedLecture ?? firstUncompletedLecture(course) {
-                        VideoPlayerView(lecture: lecture, courseTitle: course.title) { completedId in
+                if let lecture = selectedLecture ?? firstUncompletedLecture(course) {
+                    VideoPlayerView(
+                        lecture: lecture,
+                        courseTitle: course.title,
+                        allLectures: allLectures(course),
+                        onCompleted: { completedId in
                             completedLectureIds.insert(completedId)
+                        },
+                        onSelectLecture: { lec in
+                            selectedLecture = lec
                         }
-                        .id(lecture.lectureId) // 강의 변경 시 웹뷰 새로 로드
-                    }
-                }
-
-                // 하단 재생목록 버튼
-                if !showPlaylist {
-                    VStack {
-                        Spacer()
-                        Button {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                showPlaylist = true
-                            }
-                        } label: {
-                            HStack {
-                                Image(systemName: "list.bullet")
-                                Text("재생목록")
-                                    .font(.system(size: 15, weight: .semibold))
-                                Spacer()
-                                let total = allLectures(course).count
-                                let done = completedLectureIds.count
-                                Text("\(done)/\(total) 완료")
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(.secondary)
-                                Image(systemName: "chevron.up")
-                            }
-                            .foregroundStyle(.primary)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 16)
-                            .background(.ultraThinMaterial)
-                            .cornerRadius(16)
-                            .shadow(color: .black.opacity(0.1), radius: 10, y: -2)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 16)
-                    }
+                    )
+                    .id(lecture.lectureId)
                 }
             }
         }
         .navigationTitle("강의")
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadCourse() }
-        .sheet(isPresented: $showPlaylist, onDismiss: {
-            // 시트 닫힐 때 완료 상태 새로고침
-            Task { await loadWatchHistory() }
-        }) {
-            playlistSheet
-        }
-    }
-
-    // MARK: - 재생목록 시트
-    private var playlistSheet: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    if let course = course {
-                        ForEach(course.sections) { section in
-                            VStack(alignment: .leading, spacing: 0) {
-                                Text(section.title)
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(.secondary)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 10)
-
-                                if let lectures = section.lectures {
-                                    ForEach(lectures) { lecture in
-                                        let isCompleted = completedLectureIds.contains(lecture.lectureId)
-                                        let isSelected = selectedLecture?.lectureId == lecture.lectureId
-
-                                        Button {
-                                            selectedLecture = lecture
-                                            showPlaylist = false
-                                        } label: {
-                                            HStack(spacing: 12) {
-                                                Image(systemName: isSelected ? "play.circle.fill" : (isCompleted ? "checkmark.circle.fill" : "play.circle"))
-                                                    .foregroundStyle(isSelected ? Color.mainCoral : (isCompleted ? .green : .secondary))
-                                                    .font(.title3)
-
-                                                VStack(alignment: .leading, spacing: 2) {
-                                                    Text(lecture.title)
-                                                        .font(.system(size: 15, weight: isSelected ? .bold : .regular))
-                                                        .foregroundStyle(isSelected ? Color.mainCoral : (isCompleted ? .secondary : .primary))
-                                                        .multilineTextAlignment(.leading)
-                                                    Text(lecture.formattedPlayTime)
-                                                        .font(.caption)
-                                                        .foregroundStyle(.secondary)
-                                                }
-
-                                                Spacer()
-
-                                                // 완료 표시
-                                                if isCompleted {
-                                                    Text("완료")
-                                                        .font(.system(size: 12, weight: .semibold))
-                                                        .foregroundStyle(.green)
-                                                }
-                                            }
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 12)
-                                            .background(isSelected ? Color.mainCoral.opacity(0.08) : Color.clear)
-                                        }
-
-                                        Divider().padding(.leading, 52)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            .navigationTitle("재생목록")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("닫기") {
-                        showPlaylist = false
-                    }
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
     }
 
     // 모든 레슨 ID 목록
@@ -248,7 +149,7 @@ struct CoursePlayerView: View {
                 selectedLecture = firstUncompletedLecture(c)
             }
         } catch {
-            print("강의 로드 실패: \(error)")
+            // 에러 처리
         }
         isLoading = false
     }
@@ -271,7 +172,7 @@ struct CoursePlayerView: View {
                 completedLectureIds = completed
             }
         } catch {
-            print("시청 이력 로드 실패: \(error)")
+            // 에러 처리
         }
     }
 }
