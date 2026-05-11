@@ -10,6 +10,8 @@ struct AdminCourseView: View {
     @State private var editDescription = ""
     @State private var editCategory = "PORTRAIT"
     @State private var editLevel = "BEGINNER"
+    @State private var courseToDelete: CourseListItem?
+    @State private var showDeleteAlert = false
 
     var body: some View {
         NavigationStack {
@@ -72,10 +74,15 @@ struct AdminCourseView: View {
             .sheet(isPresented: $showEditSheet) {
                 adminCourseEditSheet
             }
-            .alert("오류", isPresented: .constant(errorMessage != nil)) {
-                Button("확인") { errorMessage = nil }
+            .alert("강의 삭제", isPresented: $showDeleteAlert) {
+                Button("취소", role: .cancel) { }
+                Button("삭제", role: .destructive) {
+                    if let course = courseToDelete {
+                        Task { await deleteById(courseId: course.courseId) }
+                    }
+                }
             } message: {
-                Text(errorMessage ?? "")
+                Text("\"\(courseToDelete?.title ?? "")\" 강의를 삭제하시겠습니까?")
             }
         }
     }
@@ -102,11 +109,10 @@ struct AdminCourseView: View {
 
                 SwiftUI.Section {
                     Button("강의 삭제", role: .destructive) {
-                        Task {
-                            if let course = editingCourse {
-                                await deleteById(courseId: course.courseId)
-                                showEditSheet = false
-                            }
+                        courseToDelete = editingCourse
+                        showEditSheet = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            showDeleteAlert = true
                         }
                     }
                 }
@@ -162,11 +168,9 @@ struct AdminCourseView: View {
     }
 
     private func deleteCourse(at offsets: IndexSet) {
-        for index in offsets {
-            let course = courses[index]
-            Task {
-                await deleteById(courseId: course.courseId)
-            }
+        if let index = offsets.first {
+            courseToDelete = courses[index]
+            showDeleteAlert = true
         }
     }
 

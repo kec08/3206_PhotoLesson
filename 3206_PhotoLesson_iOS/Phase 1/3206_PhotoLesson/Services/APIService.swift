@@ -360,7 +360,19 @@ extension APIService {
     }
 
     func deleteUser(userId: Int) async throws {
-        let _: EmptyResponse = try await request(endpoint: "/admin/users/\(userId)", method: "DELETE")
+        guard let url = URL(string: baseURL + "/admin/users/\(userId)") else { throw APIError.invalidURL }
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "DELETE"
+        urlRequest.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
+        if let token = await AuthManager.shared.accessToken {
+            urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...204).contains(httpResponse.statusCode) else {
+            let msg = APIService.parseErrorMessage(from: data) ?? "계정 삭제에 실패했습니다."
+            throw APIError.serverError(msg)
+        }
     }
 }
 
@@ -410,12 +422,38 @@ extension APIService {
 
     // 강의 수정
     func updateTeacherCourse(courseId: Int, _ request: TeacherCourseRequest) async throws {
-        let _: [String: String] = try await self.request(endpoint: "/teacher/courses/\(courseId)", method: "PUT", body: request)
+        guard let url = URL(string: baseURL + "/teacher/courses/\(courseId)") else { throw APIError.invalidURL }
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "PUT"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
+        if let token = await AuthManager.shared.accessToken {
+            urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        urlRequest.httpBody = try JSONEncoder().encode(request)
+        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...204).contains(httpResponse.statusCode) else {
+            let msg = APIService.parseErrorMessage(from: data) ?? "강의 수정에 실패했습니다."
+            throw APIError.serverError(msg)
+        }
     }
 
     // 강의 삭제
     func deleteTeacherCourse(courseId: Int) async throws {
-        let _: EmptyResponse = try await request(endpoint: "/teacher/courses/\(courseId)", method: "DELETE")
+        guard let url = URL(string: baseURL + "/teacher/courses/\(courseId)") else { throw APIError.invalidURL }
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "DELETE"
+        urlRequest.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
+        if let token = await AuthManager.shared.accessToken {
+            urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...204).contains(httpResponse.statusCode) else {
+            let msg = APIService.parseErrorMessage(from: data) ?? "강의 삭제에 실패했습니다."
+            throw APIError.serverError(msg)
+        }
     }
 
     // 섹션 추가

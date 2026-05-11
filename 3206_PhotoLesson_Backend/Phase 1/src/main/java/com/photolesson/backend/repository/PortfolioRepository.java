@@ -7,4 +7,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface PortfolioRepository extends JpaRepository<Portfolio, Long> {
     Page<Portfolio> findByMemberId(Long memberId, Pageable pageable);
+    java.util.List<Portfolio> findAllByMemberId(Long memberId);
 }
