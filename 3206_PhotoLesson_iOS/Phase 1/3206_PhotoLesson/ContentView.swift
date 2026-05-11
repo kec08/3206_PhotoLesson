@@ -76,11 +76,13 @@ struct MainTabView: View {
                     }
             }
 
-            // 마이페이지 — 전체
-            MyPageView()
-                .tabItem {
-                    Label("마이페이지", systemImage: "person.fill")
-                }
+            // 마이페이지 — 관리자 제외
+            if !authManager.isAdmin {
+                MyPageView()
+                    .tabItem {
+                        Label("마이페이지", systemImage: "person.fill")
+                    }
+            }
         }
         .tint(.mainCoral)
     }
