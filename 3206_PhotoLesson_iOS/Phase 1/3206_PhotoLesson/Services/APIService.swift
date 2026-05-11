@@ -69,6 +69,7 @@ class APIService {
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = method
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
 
         if requiresAuth, let token = await AuthManager.shared.accessToken {
             urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -140,6 +141,7 @@ class APIService {
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
         urlRequest.setValue("Bearer \(refreshToken)", forHTTPHeaderField: "Authorization")
 
         do {
@@ -189,6 +191,7 @@ class APIService {
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
 
         if let token = await AuthManager.shared.accessToken {
             urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -318,6 +321,7 @@ class APIService {
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
 
         if let token = await AuthManager.shared.accessToken {
             urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -354,6 +358,10 @@ extension APIService {
         let body = ["role": role]
         return try await request(endpoint: "/admin/users/\(userId)/role", method: "PATCH", body: body)
     }
+
+    func deleteUser(userId: Int) async throws {
+        let _: EmptyResponse = try await request(endpoint: "/admin/users/\(userId)", method: "DELETE")
+    }
 }
 
 // MARK: - 에러 응답 파싱 (message / error 두 필드 fallback)
@@ -380,13 +388,15 @@ extension APIService {
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
         if let token = await AuthManager.shared.accessToken {
             urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         urlRequest.httpBody = try JSONEncoder().encode(request)
 
         let (data, response) = try await URLSession.shared.data(for: urlRequest)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 201 else {
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...201).contains(httpResponse.statusCode) else {
             let msg = APIService.parseErrorMessage(from: data) ?? "강의 생성에 실패했습니다."
             throw APIError.serverError(msg)
         }
@@ -462,6 +472,7 @@ extension APIService {
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
 
         if let token = await AuthManager.shared.accessToken {
             urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

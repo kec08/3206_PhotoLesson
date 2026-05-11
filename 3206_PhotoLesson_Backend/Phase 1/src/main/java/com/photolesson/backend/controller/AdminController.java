@@ -51,6 +51,14 @@ public class AdminController {
         return ResponseEntity.ok(toDto(member));
     }
 
+    @DeleteMapping("/users/{userId}")
+    public ResponseEntity<Void> deleteUser(@PathVariable Long userId) {
+        Member member = memberRepository.findById(userId)
+                .orElseThrow(() -> CustomException.notFound("사용자를 찾을 수 없습니다."));
+        memberRepository.delete(member);
+        return ResponseEntity.noContent().build();
+    }
+
     private UserDto toDto(Member member) {
         return UserDto.builder()
                 .userId(member.getId())

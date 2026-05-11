@@ -28,11 +28,19 @@ struct MainTabView: View {
                     Label("홈", systemImage: "house.fill")
                 }
 
-            // 내 강의 — 학생, 강사 (관리자도)
-            if authManager.isStudent || authManager.isTeacher {
+            // 내 강의 — 학생만
+            if authManager.isStudent {
                 MyCoursesView()
                     .tabItem {
                         Label("내 강의", systemImage: "play.rectangle.fill")
+                    }
+            }
+
+            // 내 회원 — 강사만 (관리자 제외)
+            if authManager.currentRole == "TEACHER" {
+                TeacherStudentsView()
+                    .tabItem {
+                        Label("내 회원", systemImage: "person.2.fill")
                     }
             }
 
@@ -44,9 +52,17 @@ struct MainTabView: View {
                     }
             }
 
-            // 강의 관리 — 강사, 관리자
-            if authManager.isTeacher {
+            // 강의 관리 — 강사
+            if authManager.currentRole == "TEACHER" {
                 TeacherCourseView()
+                    .tabItem {
+                        Label("강의 관리", systemImage: "square.and.pencil")
+                    }
+            }
+
+            // 강의 관리 — 관리자 (전체 강의)
+            if authManager.isAdmin {
+                AdminCourseView()
                     .tabItem {
                         Label("강의 관리", systemImage: "square.and.pencil")
                     }
