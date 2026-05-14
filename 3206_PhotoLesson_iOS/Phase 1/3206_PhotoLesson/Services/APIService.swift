@@ -70,6 +70,7 @@ class APIService {
         urlRequest.httpMethod = method
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
+        urlRequest.setValue("PhotoLesson-iOS", forHTTPHeaderField: "User-Agent")
 
         if requiresAuth, let token = await AuthManager.shared.accessToken {
             urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -93,8 +94,20 @@ class APIService {
             throw APIError.invalidResponse
         }
 
+        // DEBUG 로그
+        print("📡 [\(method)] \(endpoint) → \(httpResponse.statusCode)")
+        if httpResponse.statusCode >= 400 {
+            print("❌ ERROR BODY: \(String(data: data, encoding: .utf8) ?? "nil")")
+        }
+
         switch httpResponse.statusCode {
-        case 200, 201:
+        case 200, 201, 204:
+            if data.isEmpty {
+                // 204 No Content 등 빈 응답 처리
+                if let empty = EmptyResponse() as? T {
+                    return empty
+                }
+            }
             do {
                 return try decoder.decode(T.self, from: data)
             } catch {
@@ -142,6 +155,7 @@ class APIService {
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
+        urlRequest.setValue("PhotoLesson-iOS", forHTTPHeaderField: "User-Agent")
         urlRequest.setValue("Bearer \(refreshToken)", forHTTPHeaderField: "Authorization")
 
         do {
@@ -364,12 +378,17 @@ extension APIService {
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "DELETE"
         urlRequest.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
+        urlRequest.setValue("PhotoLesson-iOS", forHTTPHeaderField: "User-Agent")
         if let token = await AuthManager.shared.accessToken {
             urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         let (data, response) = try await URLSession.shared.data(for: urlRequest)
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...204).contains(httpResponse.statusCode) else {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        print("📡 [DELETE] /admin/users/\(userId) → \(httpResponse.statusCode)")
+        if !(200...204).contains(httpResponse.statusCode) {
+            print("❌ \(String(data: data, encoding: .utf8) ?? "")")
             let msg = APIService.parseErrorMessage(from: data) ?? "계정 삭제에 실패했습니다."
             throw APIError.serverError(msg)
         }
@@ -427,13 +446,18 @@ extension APIService {
         urlRequest.httpMethod = "PUT"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
+        urlRequest.setValue("PhotoLesson-iOS", forHTTPHeaderField: "User-Agent")
         if let token = await AuthManager.shared.accessToken {
             urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         urlRequest.httpBody = try JSONEncoder().encode(request)
         let (data, response) = try await URLSession.shared.data(for: urlRequest)
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...204).contains(httpResponse.statusCode) else {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        print("📡 [PUT] /teacher/courses/\(courseId) → \(httpResponse.statusCode)")
+        if !(200...204).contains(httpResponse.statusCode) {
+            print("❌ \(String(data: data, encoding: .utf8) ?? "")")
             let msg = APIService.parseErrorMessage(from: data) ?? "강의 수정에 실패했습니다."
             throw APIError.serverError(msg)
         }
@@ -445,12 +469,17 @@ extension APIService {
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "DELETE"
         urlRequest.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
+        urlRequest.setValue("PhotoLesson-iOS", forHTTPHeaderField: "User-Agent")
         if let token = await AuthManager.shared.accessToken {
             urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         let (data, response) = try await URLSession.shared.data(for: urlRequest)
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...204).contains(httpResponse.statusCode) else {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        print("📡 [DELETE] /teacher/courses/\(courseId) → \(httpResponse.statusCode)")
+        if !(200...204).contains(httpResponse.statusCode) {
+            print("❌ \(String(data: data, encoding: .utf8) ?? "")")
             let msg = APIService.parseErrorMessage(from: data) ?? "강의 삭제에 실패했습니다."
             throw APIError.serverError(msg)
         }
@@ -464,13 +493,40 @@ extension APIService {
 
     // 섹션 수정
     func updateSection(sectionId: Int, title: String) async throws {
-        let body = ["title": title]
-        let _: [String: String] = try await self.request(endpoint: "/teacher/sections/\(sectionId)", method: "PUT", body: body)
+        guard let url = URL(string: baseURL + "/teacher/sections/\(sectionId)") else { throw APIError.invalidURL }
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "PUT"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
+        urlRequest.setValue("PhotoLesson-iOS", forHTTPHeaderField: "User-Agent")
+        if let token = await AuthManager.shared.accessToken {
+            urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        urlRequest.httpBody = try JSONEncoder().encode(["title": title])
+        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...204).contains(httpResponse.statusCode) else {
+            let msg = APIService.parseErrorMessage(from: data) ?? "섹션 수정에 실패했습니다."
+            throw APIError.serverError(msg)
+        }
     }
 
     // 섹션 삭제
     func deleteSection(sectionId: Int) async throws {
-        let _: EmptyResponse = try await request(endpoint: "/teacher/sections/\(sectionId)", method: "DELETE")
+        guard let url = URL(string: baseURL + "/teacher/sections/\(sectionId)") else { throw APIError.invalidURL }
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "DELETE"
+        urlRequest.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
+        urlRequest.setValue("PhotoLesson-iOS", forHTTPHeaderField: "User-Agent")
+        if let token = await AuthManager.shared.accessToken {
+            urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...204).contains(httpResponse.statusCode) else {
+            let msg = APIService.parseErrorMessage(from: data) ?? "섹션 삭제에 실패했습니다."
+            throw APIError.serverError(msg)
+        }
     }
 
     // 레슨 추가
@@ -480,9 +536,24 @@ extension APIService {
     }
 
     // 레슨 수정
-    func updateLecture(lectureId: Int, title: String, videoUrl: String, playTime: Int) async throws {
+    func updateLecture(lectureId: Int, title: String, videoUrl: String, playTime: Int = 0) async throws {
+        guard let url = URL(string: baseURL + "/teacher/lectures/\(lectureId)") else { throw APIError.invalidURL }
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "PUT"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
+        urlRequest.setValue("PhotoLesson-iOS", forHTTPHeaderField: "User-Agent")
+        if let token = await AuthManager.shared.accessToken {
+            urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         let body = LectureCreateBody(title: title, videoUrl: videoUrl, playTime: playTime)
-        let _: [String: String] = try await self.request(endpoint: "/teacher/lectures/\(lectureId)", method: "PUT", body: body)
+        urlRequest.httpBody = try JSONEncoder().encode(body)
+        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...204).contains(httpResponse.statusCode) else {
+            let msg = APIService.parseErrorMessage(from: data) ?? "레슨 수정에 실패했습니다."
+            throw APIError.serverError(msg)
+        }
     }
 
     // 레슨 삭제

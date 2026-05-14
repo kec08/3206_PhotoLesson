@@ -16,6 +16,8 @@ import org.springframework.web.multipart.MultipartFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +35,7 @@ public class TeacherController {
     private final LectureRepository lectureRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final LectureProgressRepository lectureProgressRepository;
+    private final CommentRepository commentRepository;
 
     @Value("${file.upload-dir}")
     private String uploadDir;
@@ -195,10 +198,23 @@ public class TeacherController {
         ));
     }
 
+    @Transactional
     @DeleteMapping("/courses/{courseId}")
     public ResponseEntity<Void> deleteCourse(@PathVariable Long courseId) {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> CustomException.notFound("강좌를 찾을 수 없습니다."));
+
+        // 강의에 속한 모든 레슨의 진도 기록 삭제
+        for (Section section : course.getSections()) {
+            for (Lecture lecture : section.getLectures()) {
+                lectureProgressRepository.deleteAll(
+                        lectureProgressRepository.findByLectureId(lecture.getId()));
+                commentRepository.deleteAll(
+                        commentRepository.findByLectureIdOrderByCreatedAtDesc(lecture.getId()));
+            }
+        }
+        // 수강 등록 삭제
+        enrollmentRepository.deleteAll(enrollmentRepository.findByCourseId(courseId));
 
         courseRepository.delete(course);
         return ResponseEntity.noContent().build();

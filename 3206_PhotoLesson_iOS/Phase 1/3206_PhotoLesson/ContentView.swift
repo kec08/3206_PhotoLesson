@@ -76,9 +76,17 @@ struct MainTabView: View {
                     }
             }
 
-            // 마이페이지 — 관리자 제외
+            // 마이페이지 — 학생/강사
             if !authManager.isAdmin {
                 MyPageView()
+                    .tabItem {
+                        Label("마이페이지", systemImage: "person.fill")
+                    }
+            }
+
+            // 마이페이지 — 관리자 (프로필 + 로그아웃만)
+            if authManager.isAdmin {
+                AdminMyPageView()
                     .tabItem {
                         Label("마이페이지", systemImage: "person.fill")
                     }

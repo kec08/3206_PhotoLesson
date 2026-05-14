@@ -37,7 +37,7 @@ struct MyCoursesView: View {
                 }
             }
             .navigationTitle("내 강의")
-            .task { await loadProgress() }
+            .onAppear { Task { await loadProgress() } }
             .refreshable { await loadProgress() }
         }
     }

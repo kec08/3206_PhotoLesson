@@ -33,6 +33,11 @@ public class EnrollmentService {
         Course course = courseRepository.findById(request.getCourseId())
                 .orElseThrow(() -> CustomException.notFound("강좌를 찾을 수 없습니다."));
 
+        // 강사/관리자는 수강 신청 불가
+        if ("TEACHER".equals(member.getRole()) || "ADMIN".equals(member.getRole())) {
+            throw CustomException.badRequest("강사 및 관리자는 수강 신청할 수 없습니다.");
+        }
+
         Enrollment enrollment = Enrollment.builder()
                 .member(member)
                 .course(course)

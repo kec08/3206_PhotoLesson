@@ -20,7 +20,10 @@ struct MyPageView: View {
             ScrollView {
                 VStack(spacing: 20) {
                     profileSection
-                    overallProgressSection(progressData)
+
+                    if authManager.isStudent {
+                        overallProgressSection(progressData)
+                    }
 
                     if authManager.currentRole == "TEACHER" {
                         Divider()
