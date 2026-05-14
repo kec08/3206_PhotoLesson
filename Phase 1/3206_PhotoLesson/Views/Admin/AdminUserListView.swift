@@ -9,6 +9,8 @@ struct AdminUserListView: View {
     @State private var users: [User] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
+    @State private var userToDelete: User?
+    @State private var showDeleteAlert = false
 
     var body: some View {
         NavigationStack {
@@ -24,31 +26,38 @@ struct AdminUserListView: View {
                             .foregroundStyle(.secondary)
                     }
                 } else {
-                    List(users) { user in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(user.fullName)
-                                    .font(.headline)
-                                Text(user.email)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+                    List {
+                        ForEach(users) { user in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(user.fullName)
+                                        .font(.headline)
+                                    Text(user.email)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
 
-                            Spacer()
+                                Spacer()
 
-                            Menu {
-                                Button("학생") { Task { await changeRole(user: user, role: "STUDENT") } }
-                                Button("선생님") { Task { await changeRole(user: user, role: "TEACHER") } }
-                                Button("관리자") { Task { await changeRole(user: user, role: "ADMIN") } }
-                            } label: {
-                                Text(user.role ?? "STUDENT")
-                                    .font(.caption)
-                                    .fontWeight(.semibold)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4)
-                                    .background(roleColor(user.role).opacity(0.15))
-                                    .foregroundStyle(roleColor(user.role))
-                                    .cornerRadius(6)
+                                Menu {
+                                    Button("학생") { Task { await changeRole(user: user, role: "STUDENT") } }
+                                    Button("선생님") { Task { await changeRole(user: user, role: "TEACHER") } }
+                                    Button("관리자") { Task { await changeRole(user: user, role: "ADMIN") } }
+                                    Divider()
+                                    Button("계정 삭제", role: .destructive) {
+                                        userToDelete = user
+                                        showDeleteAlert = true
+                                    }
+                                } label: {
+                                    Text(user.role ?? "STUDENT")
+                                        .font(.caption)
+                                        .fontWeight(.semibold)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 4)
+                                        .background(roleColor(user.role).opacity(0.15))
+                                        .foregroundStyle(roleColor(user.role))
+                                        .cornerRadius(6)
+                                }
                             }
                         }
                     }
@@ -57,6 +66,16 @@ struct AdminUserListView: View {
             .navigationTitle("유저 관리")
             .task { await loadUsers() }
             .refreshable { await loadUsers() }
+            .alert("계정 삭제", isPresented: $showDeleteAlert) {
+                Button("취소", role: .cancel) { }
+                Button("삭제", role: .destructive) {
+                    if let user = userToDelete {
+                        Task { await deleteUser(user: user) }
+                    }
+                }
+            } message: {
+                Text("\(userToDelete?.fullName ?? "")님의 계정을 삭제하시겠습니까?\n관련된 모든 데이터가 함께 삭제됩니다.")
+            }
         }
     }
 
@@ -76,6 +95,15 @@ struct AdminUserListView: View {
             if let idx = users.firstIndex(where: { $0.id == user.id }) {
                 users[idx] = updated
             }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func deleteUser(user: User) async {
+        do {
+            try await APIService.shared.deleteUser(userId: user.id)
+            users.removeAll { $0.id == user.id }
         } catch {
             errorMessage = error.localizedDescription
         }

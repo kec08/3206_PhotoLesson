@@ -21,12 +21,10 @@ struct YouTubePlayerView: UIViewRepresentable {
         config.defaultWebpagePreferences = prefs
 
         let webView = WKWebView(frame: .zero, configuration: config)
-        webView.scrollView.isScrollEnabled = true
+        webView.scrollView.isScrollEnabled = false
         webView.scrollView.bounces = false
         webView.isOpaque = false
         webView.backgroundColor = .black
-        // 모바일 Safari UA → YouTube가 모바일 플레이어 제공
-        webView.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
         webView.navigationDelegate = context.coordinator
 
         loadVideo(webView: webView, context: context)
@@ -44,8 +42,7 @@ struct YouTubePlayerView: UIViewRepresentable {
         let videoId = extractVideoId(from: videoURL)
         context.coordinator.lastVideoId = videoId
 
-        // YouTube watch 페이지를 직접 로드 (embed 아님)
-        let watchURL = "https://m.youtube.com/watch?v=\(videoId)"
+        let watchURL = "https://www.youtube.com/watch?v=\(videoId)"
         if let url = URL(string: watchURL) {
             webView.load(URLRequest(url: url))
         }
@@ -89,6 +86,7 @@ struct VideoPlayerView: View {
     var onCompleted: ((Int) -> Void)? = nil
     var onSelectLecture: ((Lecture) -> Void)? = nil
 
+    @EnvironmentObject var authManager: AuthManager
     @State private var showCompletionAlert = false
     @State private var isCompleted = false
     @State private var selectedTab = 0
@@ -99,18 +97,14 @@ struct VideoPlayerView: View {
     var body: some View {
         Group {
             if sizeClass == .regular {
-                // iPad: 좌측 영상 + 우측 커리큘럼
                 HStack(spacing: 0) {
                     leftPanel
                         .frame(maxWidth: .infinity)
-
                     Divider()
-
                     rightPanel
                         .frame(width: 360)
                 }
             } else {
-                // iPhone
                 ScrollView {
                     VStack(spacing: 0) {
                         videoSection
@@ -121,12 +115,30 @@ struct VideoPlayerView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationTitle(courseTitle)
+        .onAppear { Task { await loadCompletionStatus() } }
+        .onChange(of: lecture.lectureId) { _, _ in
+            isCompleted = completedLectureIds.contains(lecture.lectureId)
+        }
         .alert("시청 완료", isPresented: $showCompletionAlert) {
             Button("확인") { Task { await markCompleted() } }
             Button("취소", role: .cancel) {}
         } message: {
             Text("이 레슨을 완료 처리하시겠습니까?")
         }
+    }
+
+    private func loadCompletionStatus() async {
+        guard let userId = authManager.currentUserId else { return }
+        do {
+            let history = try await APIService.shared.getWatchHistory(userId: userId)
+            for h in history {
+                if let lec = allLectures.first(where: { $0.lectureId == h.lectureId }),
+                   h.lastPosition >= lec.playTime {
+                    completedLectureIds.insert(h.lectureId)
+                }
+            }
+            isCompleted = completedLectureIds.contains(lecture.lectureId)
+        } catch { }
     }
 
     // MARK: - iPad 좌측 패널
@@ -374,7 +386,15 @@ struct VideoPlayerView: View {
             lastPosition: lecture.playTime
         )
         isCompleted = true
+        completedLectureIds.insert(lecture.lectureId)
         onCompleted?(lecture.lectureId)
+
+        // 다음 강의로 자동 이동
+        if let currentIndex = allLectures.firstIndex(where: { $0.lectureId == lecture.lectureId }),
+           currentIndex + 1 < allLectures.count {
+            let nextLecture = allLectures[currentIndex + 1]
+            onSelectLecture?(nextLecture)
+        }
     }
 }
 

@@ -13,18 +13,29 @@ struct MyPageView: View {
     @State private var editName = ""
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var isUploadingPhoto = false
+    @State private var myStudents: [StudentProgress] = []
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
                     profileSection
-                    overallProgressSection(progressData)
 
-                    Divider()
-                        .padding(.horizontal)
+                    if authManager.isStudent {
+                        overallProgressSection(progressData)
+                    }
 
-                    portfolioFeedSection
+                    if authManager.currentRole == "TEACHER" {
+                        Divider()
+                            .padding(.horizontal)
+
+                        myStudentsSection
+                    } else if authManager.isStudent {
+                        Divider()
+                            .padding(.horizontal)
+
+                        portfolioFeedSection
+                    }
                 }
                 .padding(.vertical)
             }
@@ -210,6 +221,67 @@ struct MyPageView: View {
         .padding(.horizontal)
     }
 
+    // MARK: - 내 회원 (강사용)
+    private var myStudentsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("내 회원")
+                    .font(.title3)
+                    .fontWeight(.bold)
+                Spacer()
+                Text("\(myStudents.count)명")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal)
+
+            if myStudents.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "person.2")
+                        .font(.system(size: 40))
+                        .foregroundStyle(.secondary)
+                    Text("아직 수강생이 없습니다")
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 40)
+            } else {
+                ForEach(myStudents) { student in
+                    HStack(spacing: 12) {
+                        Circle()
+                            .fill(Color(.systemGray5))
+                            .frame(width: 44, height: 44)
+                            .overlay {
+                                Image(systemName: "person.fill")
+                                    .foregroundStyle(.secondary)
+                            }
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(student.fullName)
+                                .font(.system(size: 15, weight: .semibold))
+                            Text(student.email)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("\(Int(student.progressPercent))%")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(Color.mainCoral)
+                            Text("\(student.completedLectures)/\(student.totalLectures) 완료")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 6)
+                }
+            }
+        }
+    }
+
     // MARK: - 인스타 프로필 스타일 포트폴리오 그리드
     private var portfolioFeedSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -287,19 +359,41 @@ struct MyPageView: View {
             // 에러 처리
         }
 
-        do {
-            let portfolioResponse = try await APIService.shared.getPortfolios()
-            portfolios = portfolioResponse.content
-            var loadedData: [(portfolio: Portfolio, images: [PortfolioImage])] = []
-            for p in portfolios {
-                let images = try await APIService.shared.getPortfolioImages(portfolioId: p.portfolioId)
-                if !images.isEmpty {
-                    loadedData.append((portfolio: p, images: images))
+        if authManager.isTeacher {
+            // 강사: 내 강의의 수강생 목록 로드
+            do {
+                let dashboard = try await APIService.shared.getTeacherDashboard()
+                var allStudents: [StudentProgress] = []
+                for course in dashboard.courses {
+                    if course.studentCount > 0 {
+                        let courseDash = try await APIService.shared.getCourseDashboard(courseId: course.courseId)
+                        for student in courseDash.students {
+                            if !allStudents.contains(where: { $0.userId == student.userId }) {
+                                allStudents.append(student)
+                            }
+                        }
+                    }
                 }
+                myStudents = allStudents
+            } catch {
+                // 에러 처리
             }
-            portfolioData = loadedData
-        } catch {
-            // 에러 처리
+        } else {
+            // 학생: 포트폴리오 로드
+            do {
+                let portfolioResponse = try await APIService.shared.getPortfolios()
+                portfolios = portfolioResponse.content
+                var loadedData: [(portfolio: Portfolio, images: [PortfolioImage])] = []
+                for p in portfolios {
+                    let images = try await APIService.shared.getPortfolioImages(portfolioId: p.portfolioId)
+                    if !images.isEmpty {
+                        loadedData.append((portfolio: p, images: images))
+                    }
+                }
+                portfolioData = loadedData
+            } catch {
+                // 에러 처리
+            }
         }
 
         isLoading = false

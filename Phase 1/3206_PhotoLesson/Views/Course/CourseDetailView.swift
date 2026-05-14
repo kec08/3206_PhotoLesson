@@ -3,12 +3,18 @@ import SwiftUI
 struct CourseDetailView: View {
     let courseId: Int
 
+    @EnvironmentObject var authManager: AuthManager
     @State private var course: CourseDetail?
     @State private var isLoading = true
     @State private var isEnrolled = false
     @State private var showEnrollSuccess = false
     @State private var errorMessage: String?
     @State private var expandedSections: Set<Int> = []
+    @State private var navigateToPlayer = false
+
+    private var isTeacher: Bool {
+        authManager.isTeacher
+    }
 
     var body: some View {
         ZStack {
@@ -41,12 +47,12 @@ struct CourseDetailView: View {
                         }
                         .padding(.horizontal, 20)
                         .padding(.top, 20)
-                        .padding(.bottom, isEnrolled || course.userProgress?.enrollmentId != nil ? 20 : 100)
+                        .padding(.bottom, isTeacher || isEnrolled || course.userProgress?.enrollmentId != nil ? 20 : 100)
                     }
                 }
 
-                // 하단 고정 수강 신청 버튼
-                if !isEnrolled && course.userProgress?.enrollmentId == nil {
+                // 하단 고정 수강 신청 버튼 (강사/관리자는 제외)
+                if !isTeacher && !isEnrolled && course.userProgress?.enrollmentId == nil {
                     VStack(spacing: 0) {
                         Spacer()
                         enrollButton
@@ -61,6 +67,9 @@ struct CourseDetailView: View {
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(isPresented: $navigateToPlayer) {
+            CoursePlayerView(courseId: courseId, courseTitle: course?.title ?? "")
+        }
         .task { await loadCourseDetail() }
     }
 
@@ -396,6 +405,7 @@ struct CourseDetailView: View {
 
                 Button {
                     withAnimation { showEnrollSuccess = false }
+                    navigateToPlayer = true
                 } label: {
                     Text("강의 보러가기")
                         .font(.system(size: 17, weight: .bold))
