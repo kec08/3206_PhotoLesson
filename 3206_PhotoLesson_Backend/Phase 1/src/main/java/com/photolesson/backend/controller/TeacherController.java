@@ -36,6 +36,7 @@ public class TeacherController {
     private final EnrollmentRepository enrollmentRepository;
     private final LectureProgressRepository lectureProgressRepository;
     private final CommentRepository commentRepository;
+    private final PaymentRepository paymentRepository;
 
     @Value("${file.upload-dir}")
     private String uploadDir;
@@ -471,6 +472,37 @@ public class TeacherController {
         private String category;
         private int studentCount;
         private int lectureCount;
+        private long revenue;
         private java.time.LocalDateTime createdAt;
+    }
+
+    // === 강사 매출 ===
+    @GetMapping("/revenue")
+    public ResponseEntity<Map<String, Object>> getRevenue(Authentication authentication) {
+        Long memberId = (Long) authentication.getPrincipal();
+        Member teacher = memberRepository.findById(memberId)
+                .orElseThrow(() -> CustomException.notFound("사용자를 찾을 수 없습니다."));
+
+        long totalRevenue = paymentRepository.sumRevenueByInstructor(teacher.getFullName());
+
+        List<Map<String, Object>> courseRevenues = courseRepository.findByInstructorNameOrderByCreatedAtDesc(teacher.getFullName())
+                .stream()
+                .map(course -> {
+                    List<com.photolesson.backend.entity.Payment> payments =
+                            paymentRepository.findByCourseIdAndStatus(course.getId(), "SUCCESS");
+                    long courseRev = payments.stream().mapToLong(p -> p.getAmount()).sum();
+                    return Map.<String, Object>of(
+                            "courseId", course.getId(),
+                            "title", course.getTitle(),
+                            "price", course.getPrice() != null ? course.getPrice() : 0,
+                            "revenue", courseRev,
+                            "salesCount", payments.size()
+                    );
+                }).toList();
+
+        return ResponseEntity.ok(Map.of(
+                "totalRevenue", totalRevenue,
+                "courses", courseRevenues
+        ));
     }
 }

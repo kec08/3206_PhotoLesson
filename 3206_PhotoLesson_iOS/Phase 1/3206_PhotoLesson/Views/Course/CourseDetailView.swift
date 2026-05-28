@@ -11,6 +11,9 @@ struct CourseDetailView: View {
     @State private var errorMessage: String?
     @State private var expandedSections: Set<Int> = []
     @State private var navigateToPlayer = false
+    @State private var showPayment = false
+    @State private var isProcessingPayment = false
+    @State private var showPaymentSuccess = false
 
     private var isTeacher: Bool {
         authManager.isTeacher
@@ -60,8 +63,8 @@ struct CourseDetailView: View {
                 }
             }
 
-            // 수강 신청 성공 오버레이
-            if showEnrollSuccess {
+            // 수강 신청 / 결제 성공 오버레이
+            if showEnrollSuccess || showPaymentSuccess {
                 enrollSuccessOverlay
             }
         }
@@ -350,7 +353,12 @@ struct CourseDetailView: View {
         .padding(.vertical, 12)
     }
 
-    // MARK: - 수강 신청 버튼
+    // MARK: - 수강 신청 / 결제 버튼
+
+    private var isPaid: Bool {
+        guard let price = course?.price else { return false }
+        return price > 0
+    }
 
     private var enrollButton: some View {
         VStack(spacing: 0) {
@@ -360,23 +368,57 @@ struct CourseDetailView: View {
                 )
                 .frame(height: 20)
 
-            Button {
-                Task { await enrollCourse() }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "pencil.and.outline")
-                    Text("수강 신청하기")
+            if isPaid {
+                // 유료 강의 → 결제 버튼
+                Button {
+                    showPayment = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "creditcard.fill")
+                        Text("₩\(course?.price?.formatted() ?? "0") 결제하기")
+                    }
+                    .font(.system(size: 17, weight: .bold))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+                    .background(Color.mainCoral)
+                    .foregroundStyle(.white)
+                    .cornerRadius(14)
                 }
-                .font(.system(size: 17, weight: .bold))
-                .frame(maxWidth: .infinity)
-                .frame(height: 56)
-                .background(Color.mainCoral)
-                .foregroundStyle(.white)
-                .cornerRadius(14)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 20)
+                .background(Color(.systemBackground))
+                .sheet(isPresented: $showPayment) {
+                    PaymentSheet(
+                        course: course!,
+                        onSuccess: {
+                            showPayment = false
+                            isEnrolled = true
+                            Task { await loadCourseDetail() }
+                            withAnimation(.spring()) { showPaymentSuccess = true }
+                        },
+                        onCancel: { showPayment = false }
+                    )
+                }
+            } else {
+                // 무료 강의 → 바로 수강
+                Button {
+                    Task { await enrollCourse() }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "pencil.and.outline")
+                        Text("무료 수강 신청하기")
+                    }
+                    .font(.system(size: 17, weight: .bold))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+                    .background(Color.mainCoral)
+                    .foregroundStyle(.white)
+                    .cornerRadius(14)
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 20)
+                .background(Color(.systemBackground))
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 20)
-            .background(Color(.systemBackground))
         }
     }
 
@@ -404,7 +446,10 @@ struct CourseDetailView: View {
                     .foregroundStyle(.secondary)
 
                 Button {
-                    withAnimation { showEnrollSuccess = false }
+                    withAnimation {
+                        showEnrollSuccess = false
+                        showPaymentSuccess = false
+                    }
                     navigateToPlayer = true
                 } label: {
                     Text("강의 보러가기")

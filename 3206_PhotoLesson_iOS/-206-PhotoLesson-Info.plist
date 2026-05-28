@@ -6,29 +6,18 @@
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
 		<key>NSExceptionDomains</key>
 		<dict>
-			<key>ngrok-free.dev</key>
+			<key>43.203.214.36</key>
 			<dict>
-				<key>NSIncludesSubdomains</key>
-				<true/>
 				<key>NSExceptionAllowsInsecureHTTPLoads</key>
 				<true/>
-				<key>NSExceptionRequiresForwardSecrecy</key>
-				<false/>
-				<key>NSExceptionMinimumTLSVersion</key>
-				<string>TLSv1.0</string>
-			</dict>
-			<key>ngrok-free.app</key>
-			<dict>
 				<key>NSIncludesSubdomains</key>
 				<true/>
-				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<key>NSTemporaryExceptionAllowsInsecureHTTPLoads</key>
 				<true/>
-				<key>NSExceptionRequiresForwardSecrecy</key>
-				<false/>
-				<key>NSExceptionMinimumTLSVersion</key>
-				<string>TLSv1.0</string>
 			</dict>
 		</dict>
 	</dict>

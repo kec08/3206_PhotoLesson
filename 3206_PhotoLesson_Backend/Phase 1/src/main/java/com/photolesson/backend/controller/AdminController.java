@@ -1,10 +1,14 @@
 package com.photolesson.backend.controller;
 
+import com.photolesson.backend.dto.payment.PaymentDto;
 import com.photolesson.backend.dto.user.UserDto;
 import com.photolesson.backend.entity.Member;
 import com.photolesson.backend.exception.CustomException;
 import com.photolesson.backend.repository.*;
+import com.photolesson.backend.service.PaymentService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -24,6 +28,9 @@ public class AdminController {
     private final PortfolioImageRepository portfolioImageRepository;
     private final PortfolioRepository portfolioRepository;
     private final CommentRepository commentRepository;
+    private final PaymentRepository paymentRepository;
+    private final PaymentService paymentService;
+    private final CourseRepository courseRepository;
 
     @GetMapping("/users")
     public ResponseEntity<List<UserDto>> getAllUsers() {
@@ -74,6 +81,35 @@ public class AdminController {
         memberRepository.delete(member);
 
         return ResponseEntity.noContent().build();
+    }
+
+    // === 결제 관리 ===
+    @GetMapping("/payments")
+    public ResponseEntity<Page<PaymentDto>> getPayments(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(paymentService.getAllPayments(PageRequest.of(page, size)));
+    }
+
+    @PostMapping("/payments/{paymentId}/refund")
+    public ResponseEntity<Void> refundPayment(@PathVariable Long paymentId) {
+        paymentService.refundPayment(paymentId);
+        return ResponseEntity.noContent().build();
+    }
+
+    // === 통계 ===
+    @GetMapping("/stats")
+    public ResponseEntity<Map<String, Object>> getStats() {
+        java.time.LocalDateTime today = java.time.LocalDate.now().atStartOfDay();
+        Map<String, Object> stats = Map.of(
+                "totalUsers", memberRepository.count(),
+                "totalCourses", courseRepository.count(),
+                "totalPayments", paymentRepository.countByStatus("SUCCESS"),
+                "totalRevenue", paymentRepository.sumTotalRevenue(),
+                "todayRevenue", paymentRepository.sumRevenueAfter(today),
+                "todayPayments", paymentRepository.countByCreatedAtAfter(today)
+        );
+        return ResponseEntity.ok(stats);
     }
 
     private UserDto toDto(Member member) {

@@ -27,8 +27,8 @@ enum APIError: LocalizedError, Sendable {
 class APIService {
     static let shared = APIService()
 
-    // ngrok 배포 URL (2026-05-07)
-    private let serverHost = "https://nonpunitive-unsuperlatively-josefine.ngrok-free.dev"
+    // AWS EC2 배포 URL
+    private let serverHost = "http://43.203.214.36:8080"
     private var baseURL: String { serverHost + "/api/v1" }
 
     private let decoder: JSONDecoder = {
@@ -704,6 +704,37 @@ extension APIService {
         let _: EmptyResponse = try await request(
             endpoint: "/comments/\(commentId)",
             method: "DELETE",
+            requiresAuth: true
+        )
+    }
+
+    // MARK: - Payment
+
+    /// 결제 요청 (orderId, amount, clientKey 반환)
+    func requestPayment(courseId: Int) async throws -> PaymentRequestResponse {
+        return try await request(
+            endpoint: "/payments/request",
+            method: "POST",
+            body: PaymentRequest(courseId: courseId),
+            requiresAuth: true
+        )
+    }
+
+    /// 결제 승인 확인
+    func confirmPayment(paymentKey: String, orderId: String, amount: Int) async throws -> PaymentResponse {
+        return try await request(
+            endpoint: "/payments/confirm",
+            method: "POST",
+            body: PaymentConfirm(paymentKey: paymentKey, orderId: orderId, amount: amount),
+            requiresAuth: true
+        )
+    }
+
+    /// 내 결제 내역
+    func getMyPayments() async throws -> [PaymentResponse] {
+        return try await request(
+            endpoint: "/payments/my",
+            method: "GET",
             requiresAuth: true
         )
     }
