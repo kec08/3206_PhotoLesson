@@ -133,6 +133,7 @@ struct CourseCreateView: View {
     @State private var courseDescription = ""
     @State private var category = "PORTRAIT"
     @State private var level = "BEGINNER"
+    @State private var priceText = ""
     @State private var thumbnailUrl = ""
     @State private var sections: [SectionInput] = []
     @State private var isSubmitting = false
@@ -179,6 +180,14 @@ struct CourseCreateView: View {
             Picker("레벨", selection: $level) {
                 ForEach(levels, id: \.self) { lev in Text(lev) }
             }
+            HStack {
+                Text("가격 (원)")
+                Spacer()
+                TextField("0 = 무료", text: $priceText)
+                    .keyboardType(.numberPad)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 120)
+            }
         }
     }
 
@@ -187,8 +196,9 @@ struct CourseCreateView: View {
             if let thumbnailImage {
                 thumbnailImage
                     .resizable()
-                    .aspectRatio(16/9, contentMode: .fill)
+                    .scaledToFill()
                     .frame(height: 180)
+                    .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 10))
             }
 
@@ -325,12 +335,14 @@ struct CourseCreateView: View {
             )
         }
 
+        let price = Int(priceText) ?? 0
+
         let request = TeacherCourseRequest(
             title: title,
             description: courseDescription,
             category: category,
             level: level,
-            price: nil,
+            price: price > 0 ? price : nil,
             thumbnailUrl: thumbnailUrl.isEmpty ? nil : thumbnailUrl,
             sections: sectionRequests.isEmpty ? nil : sectionRequests
         )
@@ -589,6 +601,7 @@ struct CourseEditView: View {
     @State private var category: String
     @State private var level: String
     @State private var thumbnailUrl: String
+    @State private var priceText: String
     @State private var isSaving = false
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var thumbnailData: Data?
@@ -607,6 +620,7 @@ struct CourseEditView: View {
         _category = State(initialValue: course.category ?? "PORTRAIT")
         _level = State(initialValue: course.level ?? "BEGINNER")
         _thumbnailUrl = State(initialValue: course.thumbnailUrl ?? "")
+        _priceText = State(initialValue: course.price != nil && course.price! > 0 ? "\(course.price!)" : "")
         // 기존 섹션/레슨을 편집용 모델로 변환
         _editSections = State(initialValue: course.sections.map { section in
             EditSectionItem(
@@ -663,6 +677,14 @@ struct CourseEditView: View {
             Picker("레벨", selection: $level) {
                 ForEach(levels, id: \.self) { Text($0) }
             }
+            HStack {
+                Text("가격 (원)")
+                Spacer()
+                TextField("0 = 무료", text: $priceText)
+                    .keyboardType(.numberPad)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 120)
+            }
         }
     }
 
@@ -671,16 +693,18 @@ struct CourseEditView: View {
             if let thumbnailImage {
                 thumbnailImage
                     .resizable()
-                    .aspectRatio(16/9, contentMode: .fill)
+                    .scaledToFill()
                     .frame(height: 180)
+                    .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 10))
             } else if let urlStr = APIService.shared.fullImageURL(thumbnailUrl), let url = URL(string: urlStr) {
                 AsyncImage(url: url) { image in
-                    image.resizable().aspectRatio(16/9, contentMode: .fill)
+                    image.resizable().scaledToFill()
                 } placeholder: {
                     Rectangle().fill(Color(.systemGray5))
                 }
                 .frame(height: 180)
+                .clipped()
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             }
 
@@ -795,12 +819,13 @@ struct CourseEditView: View {
 
         do {
             // 1. 강의 기본 정보 수정
+            let editPrice = Int(priceText) ?? 0
             let request = TeacherCourseRequest(
                 title: title,
                 description: courseDescription,
                 category: category,
                 level: level,
-                price: course.price,
+                price: editPrice > 0 ? editPrice : nil,
                 thumbnailUrl: thumbnailData != nil ? nil : (thumbnailUrl.isEmpty ? nil : thumbnailUrl),
                 sections: nil
             )

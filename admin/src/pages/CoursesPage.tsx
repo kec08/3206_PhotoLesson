@@ -9,21 +9,23 @@ interface Course {
 
 export function CoursesPage() {
   const [courses, setCourses] = useState<Course[]>([])
+  const [page, setPage] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
 
   useEffect(() => {
-    api.get('/teacher/courses').then(r => setCourses(r.data)).catch(() => {
-      // admin은 전체 과목 API를 쓸 수도 있음
-      api.get('/courses', { params: { page: 0, size: 100 } }).then(r => {
-        setCourses(r.data.content || r.data)
-      }).catch(() => {})
-    })
-  }, [])
+    // 전체 강의 목록 (페이징)
+    api.get('/courses', { params: { page, size: 50 } }).then(r => {
+      const data = r.data
+      setCourses(data.content || data)
+      setTotalPages(data.totalPages || 1)
+    }).catch(() => {})
+  }, [page])
 
   return (
     <div>
       <div className="page-header">
         <h2>강의 관리</h2>
-        <p>등록된 강좌를 확인합니다</p>
+        <p>등록된 전체 강좌를 확인합니다</p>
       </div>
 
       <div className="table-card">
@@ -51,6 +53,14 @@ export function CoursesPage() {
             )}
           </tbody>
         </table>
+
+        {totalPages > 1 && (
+          <div className="pagination">
+            <button disabled={page === 0} onClick={() => setPage(p => p - 1)}>이전</button>
+            <span className="page-info">{page + 1} / {totalPages}</span>
+            <button disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>다음</button>
+          </div>
+        )}
       </div>
     </div>
   )

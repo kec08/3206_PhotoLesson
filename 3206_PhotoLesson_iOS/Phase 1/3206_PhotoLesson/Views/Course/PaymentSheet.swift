@@ -1,4 +1,5 @@
 import SwiftUI
+import WebKit
 
 struct PaymentSheet: View {
     let course: CourseDetail
@@ -7,20 +8,16 @@ struct PaymentSheet: View {
 
     @State private var isProcessing = false
     @State private var errorMessage: String?
-    @State private var paymentComplete = false
+    @State private var showTossWebView = false
+    @State private var paymentRequest: PaymentRequestResponse?
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(spacing: 24) {
-                        // 강의 정보
                         courseInfoSection
-
-                        // 결제 금액
                         priceSection
-
-                        // 결제 수단 (토스페이먼츠)
                         paymentMethodSection
 
                         if let error = errorMessage {
@@ -33,7 +30,6 @@ struct PaymentSheet: View {
                     .padding(20)
                 }
 
-                // 하단 결제 버튼
                 payButton
             }
             .navigationTitle("결제")
@@ -43,6 +39,27 @@ struct PaymentSheet: View {
                     Button("취소") { onCancel() }
                 }
             }
+            .fullScreenCover(isPresented: $showTossWebView) {
+                if let req = paymentRequest {
+                    TossPaymentWebView(
+                        clientKey: req.clientKey,
+                        orderId: req.orderId,
+                        orderName: req.orderName,
+                        amount: req.amount,
+                        onSuccess: { paymentKey, orderId, amount in
+                            showTossWebView = false
+                            Task { await confirmPayment(paymentKey: paymentKey, orderId: orderId, amount: amount) }
+                        },
+                        onFail: { message in
+                            showTossWebView = false
+                            errorMessage = message
+                        },
+                        onCancel: {
+                            showTossWebView = false
+                        }
+                    )
+                }
+            }
         }
     }
 
@@ -50,11 +67,10 @@ struct PaymentSheet: View {
 
     private var courseInfoSection: some View {
         HStack(spacing: 14) {
-            // 썸네일
             if let fullUrl = APIService.shared.fullImageURL(course.thumbnailUrl),
                let url = URL(string: fullUrl) {
                 AsyncImage(url: url) { image in
-                    image.resizable().aspectRatio(contentMode: .fill)
+                    image.resizable().scaledToFill()
                 } placeholder: {
                     Rectangle().fill(Color(.systemGray5))
                 }
@@ -152,12 +168,11 @@ struct PaymentSheet: View {
         VStack(spacing: 0) {
             Divider()
             Button {
-                Task { await processPayment() }
+                Task { await startPayment() }
             } label: {
                 HStack(spacing: 8) {
                     if isProcessing {
-                        ProgressView()
-                            .tint(.white)
+                        ProgressView().tint(.white)
                     } else {
                         Image(systemName: "lock.fill")
                         Text("₩\((course.price ?? 0).formatted()) 결제하기")
@@ -176,35 +191,182 @@ struct PaymentSheet: View {
         .background(Color(.systemBackground))
     }
 
-    // MARK: - 결제 처리
+    // MARK: - 결제 시작
 
-    private func processPayment() async {
+    private func startPayment() async {
         isProcessing = true
         errorMessage = nil
 
         do {
-            // 1. 결제 요청 → orderId 받기
-            let paymentRequest = try await APIService.shared.requestPayment(courseId: Int(course.courseId))
+            let req = try await APIService.shared.requestPayment(courseId: Int(course.courseId))
+            paymentRequest = req
+            isProcessing = false
+            showTossWebView = true
+        } catch let error as APIError {
+            errorMessage = error.errorDescription
+            isProcessing = false
+        } catch {
+            errorMessage = "결제 준비 중 오류가 발생했습니다."
+            isProcessing = false
+        }
+    }
 
-            // 2. 토스페이먼츠 승인 (실제로는 토스 SDK 웹뷰를 통해 처리)
-            //    여기서는 백엔드에 직접 confirm 호출 (테스트 모드)
+    // MARK: - 결제 승인
+
+    private func confirmPayment(paymentKey: String, orderId: String, amount: Int) async {
+        isProcessing = true
+        do {
             let confirmed = try await APIService.shared.confirmPayment(
-                paymentKey: "test_\(paymentRequest.orderId)",
-                orderId: paymentRequest.orderId,
-                amount: paymentRequest.amount
+                paymentKey: paymentKey,
+                orderId: orderId,
+                amount: amount
             )
-
             if confirmed.status == "SUCCESS" {
                 onSuccess()
             } else {
-                errorMessage = "결제에 실패했습니다."
+                errorMessage = "결제 승인에 실패했습니다."
             }
         } catch let error as APIError {
             errorMessage = error.errorDescription
         } catch {
-            errorMessage = "결제 중 오류가 발생했습니다: \(error.localizedDescription)"
+            errorMessage = "결제 승인 중 오류가 발생했습니다."
+        }
+        isProcessing = false
+    }
+}
+
+// MARK: - 토스페이먼츠 웹뷰
+
+struct TossPaymentWebView: UIViewControllerRepresentable {
+    let clientKey: String
+    let orderId: String
+    let orderName: String
+    let amount: Int
+    let onSuccess: (String, String, Int) -> Void // paymentKey, orderId, amount
+    let onFail: (String) -> Void
+    let onCancel: () -> Void
+
+    func makeUIViewController(context: Context) -> TossPaymentViewController {
+        let vc = TossPaymentViewController()
+        vc.clientKey = clientKey
+        vc.orderId = orderId
+        vc.orderName = orderName
+        vc.amount = amount
+        vc.onSuccess = onSuccess
+        vc.onFail = onFail
+        vc.onCancel = onCancel
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: TossPaymentViewController, context: Context) {}
+}
+
+class TossPaymentViewController: UIViewController, WKNavigationDelegate {
+    var clientKey = ""
+    var orderId = ""
+    var orderName = ""
+    var amount = 0
+    var onSuccess: ((String, String, Int) -> Void)?
+    var onFail: ((String) -> Void)?
+    var onCancel: (() -> Void)?
+
+    private var webView: WKWebView!
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .systemBackground
+
+        let config = WKWebViewConfiguration()
+        webView = WKWebView(frame: view.bounds, configuration: config)
+        webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        webView.navigationDelegate = self
+        view.addSubview(webView)
+
+        // 닫기 버튼
+        let closeButton = UIButton(type: .system)
+        closeButton.setTitle("닫기", for: .normal)
+        closeButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .medium)
+        closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+        closeButton.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(closeButton)
+        NSLayoutConstraint.activate([
+            closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16)
+        ])
+
+        loadPaymentPage()
+    }
+
+    @objc private func closeTapped() {
+        onCancel?()
+    }
+
+    private func loadPaymentPage() {
+        let html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <script src="https://js.tosspayments.com/v1/payment"></script>
+        </head>
+        <body>
+            <script>
+                var tossPayments = TossPayments('\(clientKey)');
+                tossPayments.requestPayment('카드', {
+                    amount: \(amount),
+                    orderId: '\(orderId)',
+                    orderName: '\(orderName.replacingOccurrences(of: "'", with: "\\'"))',
+                    successUrl: 'photolesson://payment/success',
+                    failUrl: 'photolesson://payment/fail'
+                }).catch(function(error) {
+                    if (error.code === 'USER_CANCEL') {
+                        window.location.href = 'photolesson://payment/cancel';
+                    } else {
+                        window.location.href = 'photolesson://payment/fail?message=' + encodeURIComponent(error.message);
+                    }
+                });
+            </script>
+        </body>
+        </html>
+        """
+        webView.loadHTMLString(html, baseURL: URL(string: "https://js.tosspayments.com"))
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard let url = navigationAction.request.url else {
+            decisionHandler(.allow)
+            return
         }
 
-        isProcessing = false
+        let urlString = url.absoluteString
+
+        // 성공 콜백
+        if urlString.starts(with: "photolesson://payment/success") {
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            let paymentKey = components?.queryItems?.first(where: { $0.name == "paymentKey" })?.value ?? ""
+            let orderId = components?.queryItems?.first(where: { $0.name == "orderId" })?.value ?? ""
+            let amount = Int(components?.queryItems?.first(where: { $0.name == "amount" })?.value ?? "0") ?? 0
+            onSuccess?(paymentKey, orderId, amount)
+            decisionHandler(.cancel)
+            return
+        }
+
+        // 실패 콜백
+        if urlString.starts(with: "photolesson://payment/fail") {
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            let message = components?.queryItems?.first(where: { $0.name == "message" })?.value ?? "결제에 실패했습니다."
+            onFail?(message)
+            decisionHandler(.cancel)
+            return
+        }
+
+        // 취소 콜백
+        if urlString.starts(with: "photolesson://payment/cancel") {
+            onCancel?()
+            decisionHandler(.cancel)
+            return
+        }
+
+        decisionHandler(.allow)
     }
 }

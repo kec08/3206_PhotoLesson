@@ -12,7 +12,7 @@ struct CourseCardView: View {
                     AsyncImage(url: url, transaction: Transaction(animation: nil)) { phase in
                         switch phase {
                         case .success(let image):
-                            image.resizable().aspectRatio(16/9, contentMode: .fill)
+                            image.resizable().scaledToFill()
                         default:
                             thumbnailPlaceholder
                         }
@@ -32,7 +32,9 @@ struct CourseCardView: View {
                         .padding(8)
                 }
             }
-            .aspectRatio(16/9, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .frame(height: 180)
+            .clipped()
             .clipShape(RoundedRectangle(cornerRadius: 10))
 
             // 정보
@@ -98,7 +100,7 @@ struct CourseCardView: View {
                     endPoint: .bottomTrailing
                 )
             )
-            .aspectRatio(16/9, contentMode: .fill)
+            .frame(height: 180)
             .overlay {
                 VStack(spacing: 6) {
                     Image(systemName: "camera.fill")

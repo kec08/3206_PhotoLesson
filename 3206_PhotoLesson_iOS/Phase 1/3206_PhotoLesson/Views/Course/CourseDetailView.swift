@@ -83,17 +83,17 @@ struct CourseDetailView: View {
             if let fullUrl = APIService.shared.fullImageURL(course.thumbnailUrl),
                let url = URL(string: fullUrl) {
                 AsyncImage(url: url) { image in
-                    image.resizable().aspectRatio(16/9, contentMode: .fill)
+                    image.resizable().scaledToFill()
                 } placeholder: {
                     Rectangle().fill(
                         LinearGradient(colors: [Color(.systemGray4), Color(.systemGray6)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                    ).aspectRatio(16/9, contentMode: .fill)
+                    )
                         .overlay { ProgressView() }
                 }
             } else {
                 Rectangle().fill(
                     LinearGradient(colors: [Color(.systemGray4), Color(.systemGray6)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                ).aspectRatio(16/9, contentMode: .fill)
+                )
                     .overlay {
                         VStack(spacing: 8) {
                             Image(systemName: "camera.fill")
@@ -108,7 +108,8 @@ struct CourseDetailView: View {
             // 그라데이션 오버레이
             LinearGradient(colors: [.clear, .clear, Color(.systemBackground).opacity(0.8)], startPoint: .top, endPoint: .bottom)
         }
-        .aspectRatio(16/9, contentMode: .fit)
+        .frame(maxWidth: .infinity)
+        .frame(height: 500)
         .clipped()
     }
 

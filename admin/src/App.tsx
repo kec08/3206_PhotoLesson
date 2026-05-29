@@ -8,6 +8,7 @@ import { CoursesPage } from './pages/CoursesPage'
 import { PaymentsPage } from './pages/PaymentsPage'
 import { RevenuePage } from './pages/RevenuePage'
 import { StudentsPage } from './pages/StudentsPage'
+import { CourseStatsPage } from './pages/CourseStatsPage'
 
 interface User { userId: number; email: string; fullName: string; role: string }
 
@@ -63,6 +64,7 @@ export function App() {
         <Route path="/courses" element={<CoursesPage />} />
         <Route path="/students" element={<StudentsPage />} />
         <Route path="/revenue" element={<RevenuePage />} />
+        <Route path="/courses/:courseId/stats" element={<CourseStatsPage />} />
         {isAdmin && <Route path="/users" element={<UsersPage />} />}
         {isAdmin && <Route path="/payments" element={<PaymentsPage />} />}
         {isAdmin && <Route path="/dashboard" element={<DashboardPage />} />}

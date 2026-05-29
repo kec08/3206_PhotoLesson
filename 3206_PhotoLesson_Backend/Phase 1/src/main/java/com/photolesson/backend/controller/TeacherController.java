@@ -476,6 +476,72 @@ public class TeacherController {
         private java.time.LocalDateTime createdAt;
     }
 
+    // === 강좌 상세 통계 (강사용) ===
+    @GetMapping("/courses/{courseId}/stats")
+    public ResponseEntity<Map<String, Object>> getCourseStatsForTeacher(
+            @PathVariable Long courseId, Authentication authentication) {
+        Long memberId = (Long) authentication.getPrincipal();
+        Member teacher = memberRepository.findById(memberId)
+                .orElseThrow(() -> CustomException.notFound("사용자를 찾을 수 없습니다."));
+
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> CustomException.notFound("강좌를 찾을 수 없습니다."));
+
+        // 본인 강의인지 확인
+        if (!course.getInstructorName().equals(teacher.getFullName())) {
+            throw CustomException.badRequest("본인의 강의만 조회할 수 있습니다.");
+        }
+
+        List<Enrollment> enrollments = enrollmentRepository.findByCourseId(courseId);
+        long totalLectures = course.getSections().stream()
+                .mapToLong(s -> s.getLectures() != null ? s.getLectures().size() : 0)
+                .sum();
+
+        List<Map<String, Object>> students = new java.util.ArrayList<>();
+        double totalProgress = 0;
+
+        for (Enrollment enrollment : enrollments) {
+            Member student = enrollment.getMember();
+            List<LectureProgress> progresses = lectureProgressRepository
+                    .findByMemberIdAndCourseId(student.getId(), courseId);
+            int completedLectures = progresses.size();
+            double progressPercent = totalLectures > 0
+                    ? Math.round((double) completedLectures / totalLectures * 10000.0) / 100.0 : 0;
+            totalProgress += progressPercent;
+
+            java.util.Map<String, Object> info = new java.util.LinkedHashMap<>();
+            info.put("memberId", student.getId());
+            info.put("fullName", student.getFullName());
+            info.put("email", student.getEmail());
+            info.put("completedLectures", completedLectures);
+            info.put("totalLectures", totalLectures);
+            info.put("progressPercent", progressPercent);
+            info.put("enrolledAt", enrollment.getEnrolledAt());
+            students.add(info);
+        }
+
+        double avgProgress = enrollments.isEmpty() ? 0
+                : Math.round(totalProgress / enrollments.size() * 100.0) / 100.0;
+
+        List<Payment> payments = paymentRepository.findByCourseIdAndStatus(courseId, "SUCCESS");
+        long revenue = payments.stream().mapToLong(p -> p.getAmount()).sum();
+
+        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("courseId", course.getId());
+        result.put("title", course.getTitle());
+        result.put("category", course.getCategory());
+        result.put("instructorName", course.getInstructorName());
+        result.put("price", course.getPrice());
+        result.put("totalStudents", enrollments.size());
+        result.put("totalLectures", totalLectures);
+        result.put("avgProgress", avgProgress);
+        result.put("revenue", revenue);
+        result.put("salesCount", payments.size());
+        result.put("students", students);
+
+        return ResponseEntity.ok(result);
+    }
+
     // === 강사 매출 ===
     @GetMapping("/revenue")
     public ResponseEntity<Map<String, Object>> getRevenue(Authentication authentication) {

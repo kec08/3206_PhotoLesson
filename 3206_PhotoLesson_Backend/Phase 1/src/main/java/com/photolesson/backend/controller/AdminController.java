@@ -2,7 +2,7 @@ package com.photolesson.backend.controller;
 
 import com.photolesson.backend.dto.payment.PaymentDto;
 import com.photolesson.backend.dto.user.UserDto;
-import com.photolesson.backend.entity.Member;
+import com.photolesson.backend.entity.*;
 import com.photolesson.backend.exception.CustomException;
 import com.photolesson.backend.repository.*;
 import com.photolesson.backend.service.PaymentService;
@@ -110,6 +110,94 @@ public class AdminController {
                 "todayPayments", paymentRepository.countByCreatedAtAfter(today)
         );
         return ResponseEntity.ok(stats);
+    }
+
+    // === 전체 강좌 대시보드 (수강생 포함) ===
+    @GetMapping("/courses/dashboard")
+    public ResponseEntity<List<Map<String, Object>>> getCoursesDashboard() {
+        List<Course> courses = courseRepository.findAll();
+        List<Map<String, Object>> result = new java.util.ArrayList<>();
+
+        for (Course course : courses) {
+            long studentCount = enrollmentRepository.countByCourseId(course.getId());
+            long lectureCount = course.getSections().stream()
+                    .mapToLong(s -> s.getLectures() != null ? s.getLectures().size() : 0)
+                    .sum();
+            long revenue = paymentRepository.findByCourseIdAndStatus(course.getId(), "SUCCESS")
+                    .stream().mapToLong(p -> p.getAmount()).sum();
+
+            java.util.Map<String, Object> item = new java.util.LinkedHashMap<>();
+            item.put("courseId", course.getId());
+            item.put("title", course.getTitle());
+            item.put("category", course.getCategory());
+            item.put("instructorName", course.getInstructorName());
+            item.put("price", course.getPrice());
+            item.put("studentCount", studentCount);
+            item.put("lectureCount", lectureCount);
+            item.put("revenue", revenue);
+            result.add(item);
+        }
+
+        return ResponseEntity.ok(result);
+    }
+
+    // === 개별 강좌 통계 ===
+    @GetMapping("/courses/{courseId}/stats")
+    public ResponseEntity<Map<String, Object>> getCourseStats(@PathVariable Long courseId) {
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> CustomException.notFound("강좌를 찾을 수 없습니다."));
+
+        List<Enrollment> enrollments = enrollmentRepository.findByCourseId(courseId);
+        long totalLectures = course.getSections().stream()
+                .mapToLong(s -> s.getLectures() != null ? s.getLectures().size() : 0)
+                .sum();
+
+        // 수강생별 진도
+        List<Map<String, Object>> students = new java.util.ArrayList<>();
+        double totalProgress = 0;
+
+        for (Enrollment enrollment : enrollments) {
+            Member member = enrollment.getMember();
+            List<LectureProgress> progresses = lectureProgressRepository
+                    .findByMemberIdAndCourseId(member.getId(), courseId);
+            int completedLectures = progresses.size();
+            double progressPercent = totalLectures > 0
+                    ? Math.round((double) completedLectures / totalLectures * 10000.0) / 100.0
+                    : 0;
+            totalProgress += progressPercent;
+
+            java.util.Map<String, Object> studentInfo = new java.util.LinkedHashMap<>();
+            studentInfo.put("memberId", member.getId());
+            studentInfo.put("fullName", member.getFullName());
+            studentInfo.put("email", member.getEmail());
+            studentInfo.put("completedLectures", completedLectures);
+            studentInfo.put("totalLectures", totalLectures);
+            studentInfo.put("progressPercent", progressPercent);
+            studentInfo.put("enrolledAt", enrollment.getEnrolledAt());
+            students.add(studentInfo);
+        }
+
+        double avgProgress = enrollments.isEmpty() ? 0
+                : Math.round(totalProgress / enrollments.size() * 100.0) / 100.0;
+
+        long revenue = paymentRepository.findByCourseIdAndStatus(courseId, "SUCCESS")
+                .stream().mapToLong(p -> p.getAmount()).sum();
+        long salesCount = paymentRepository.findByCourseIdAndStatus(courseId, "SUCCESS").size();
+
+        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("courseId", course.getId());
+        result.put("title", course.getTitle());
+        result.put("category", course.getCategory());
+        result.put("instructorName", course.getInstructorName());
+        result.put("price", course.getPrice());
+        result.put("totalStudents", enrollments.size());
+        result.put("totalLectures", totalLectures);
+        result.put("avgProgress", avgProgress);
+        result.put("revenue", revenue);
+        result.put("salesCount", salesCount);
+        result.put("students", students);
+
+        return ResponseEntity.ok(result);
     }
 
     private UserDto toDto(Member member) {

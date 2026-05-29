@@ -26,3 +26,7 @@ server:
 
 file:
   upload-dir: /home/ec2-user/photolesson/uploads
+
+toss:
+  client-key: ${TOSS_CLIENT_KEY:test_ck_test}
+  secret-key: ${TOSS_SECRET_KEY:test_sk_test}
