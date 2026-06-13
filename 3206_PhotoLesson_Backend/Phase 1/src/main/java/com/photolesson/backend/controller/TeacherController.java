@@ -3,7 +3,12 @@ package com.photolesson.backend.controller;
 import com.photolesson.backend.dto.course.CourseListItemDto;
 import com.photolesson.backend.entity.*;
 import com.photolesson.backend.exception.CustomException;
+import com.photolesson.backend.util.FileUploadValidator;
 import com.photolesson.backend.repository.*;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,9 +21,8 @@ import org.springframework.web.multipart.MultipartFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -35,7 +39,6 @@ public class TeacherController {
     private final LectureRepository lectureRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final LectureProgressRepository lectureProgressRepository;
-    private final CommentRepository commentRepository;
     private final PaymentRepository paymentRepository;
 
     @Value("${file.upload-dir}")
@@ -47,6 +50,8 @@ public class TeacherController {
     public ResponseEntity<Map<String, Object>> uploadCourseThumbnail(
             @PathVariable Long courseId,
             @RequestParam("file") MultipartFile file) {
+
+        FileUploadValidator.validateImageFile(file);
 
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> CustomException.notFound("강좌를 찾을 수 없습니다."));
@@ -90,7 +95,7 @@ public class TeacherController {
 
     @PostMapping("/courses")
     public ResponseEntity<Map<String, Object>> createCourse(
-            @RequestBody CourseCreateRequest request,
+            @Valid @RequestBody CourseCreateRequest request,
             Authentication authentication) {
 
         Long memberId = (Long) authentication.getPrincipal();
@@ -105,7 +110,7 @@ public class TeacherController {
                 .price(request.getPrice())
                 .thumbnailUrl(request.getThumbnailUrl())
                 .instructorName(member.getFullName())
-                .sections(new ArrayList<>())
+                .sections(new LinkedHashSet<>())
                 .build();
 
         if (request.getSections() != null) {
@@ -115,7 +120,7 @@ public class TeacherController {
                         .course(course)
                         .title(sectionReq.getTitle())
                         .sortOrder(sectionOrder++)
-                        .lectures(new ArrayList<>())
+                        .lectures(new LinkedHashSet<>())
                         .build();
 
                 if (sectionReq.getLectures() != null) {
@@ -178,7 +183,7 @@ public class TeacherController {
     @PutMapping("/courses/{courseId}")
     public ResponseEntity<Map<String, Object>> updateCourse(
             @PathVariable Long courseId,
-            @RequestBody CourseCreateRequest request) {
+            @Valid @RequestBody CourseCreateRequest request) {
 
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> CustomException.notFound("강좌를 찾을 수 없습니다."));
@@ -199,23 +204,10 @@ public class TeacherController {
         ));
     }
 
-    @Transactional
     @DeleteMapping("/courses/{courseId}")
     public ResponseEntity<Void> deleteCourse(@PathVariable Long courseId) {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> CustomException.notFound("강좌를 찾을 수 없습니다."));
-
-        // 강의에 속한 모든 레슨의 진도 기록 삭제
-        for (Section section : course.getSections()) {
-            for (Lecture lecture : section.getLectures()) {
-                lectureProgressRepository.deleteAll(
-                        lectureProgressRepository.findByLectureId(lecture.getId()));
-                commentRepository.deleteAll(
-                        commentRepository.findByLectureIdOrderByCreatedAtDesc(lecture.getId()));
-            }
-        }
-        // 수강 등록 삭제
-        enrollmentRepository.deleteAll(enrollmentRepository.findByCourseId(courseId));
 
         courseRepository.delete(course);
         return ResponseEntity.noContent().build();
@@ -226,7 +218,7 @@ public class TeacherController {
     @PostMapping("/courses/{courseId}/sections")
     public ResponseEntity<Map<String, Object>> addSection(
             @PathVariable Long courseId,
-            @RequestBody SectionRequest request) {
+            @Valid @RequestBody SectionRequest request) {
 
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> CustomException.notFound("강좌를 찾을 수 없습니다."));
@@ -237,7 +229,7 @@ public class TeacherController {
                 .course(course)
                 .title(request.getTitle())
                 .sortOrder(nextOrder)
-                .lectures(new ArrayList<>())
+                .lectures(new LinkedHashSet<>())
                 .build();
 
         section = sectionRepository.save(section);
@@ -252,7 +244,7 @@ public class TeacherController {
     @PutMapping("/sections/{sectionId}")
     public ResponseEntity<Map<String, Object>> updateSection(
             @PathVariable Long sectionId,
-            @RequestBody SectionRequest request) {
+            @Valid @RequestBody SectionRequest request) {
 
         Section section = sectionRepository.findById(sectionId)
                 .orElseThrow(() -> CustomException.notFound("섹션을 찾을 수 없습니다."));
@@ -281,7 +273,7 @@ public class TeacherController {
     @PostMapping("/sections/{sectionId}/lectures")
     public ResponseEntity<Map<String, Object>> addLecture(
             @PathVariable Long sectionId,
-            @RequestBody LectureRequest request) {
+            @Valid @RequestBody LectureRequest request) {
 
         Section section = sectionRepository.findById(sectionId)
                 .orElseThrow(() -> CustomException.notFound("섹션을 찾을 수 없습니다."));
@@ -308,7 +300,7 @@ public class TeacherController {
     @PutMapping("/lectures/{lectureId}")
     public ResponseEntity<Map<String, Object>> updateLecture(
             @PathVariable Long lectureId,
-            @RequestBody LectureRequest request) {
+            @Valid @RequestBody LectureRequest request) {
 
         Lecture lecture = lectureRepository.findById(lectureId)
                 .orElseThrow(() -> CustomException.notFound("레슨을 찾을 수 없습니다."));
@@ -411,29 +403,71 @@ public class TeacherController {
                 .build());
     }
 
+    @GetMapping("/revenue")
+    public ResponseEntity<Map<String, Object>> getTeacherRevenue(Authentication authentication) {
+        Long memberId = (Long) authentication.getPrincipal();
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> CustomException.notFound("사용자를 찾을 수 없습니다."));
+
+        long totalRevenue = paymentRepository.sumRevenueByInstructor(member.getFullName());
+        List<Course> courses = courseRepository.findByInstructorNameOrderByCreatedAtDesc(member.getFullName());
+
+        List<Map<String, Object>> courseRevenues = new ArrayList<>();
+        for (Course course : courses) {
+            List<Payment> payments = paymentRepository.findByCourseIdAndStatus(course.getId(), "SUCCESS");
+            long revenue = payments.stream().mapToLong(Payment::getAmount).sum();
+
+            Map<String, Object> item = new java.util.LinkedHashMap<>();
+            item.put("courseId", course.getId());
+            item.put("courseTitle", course.getTitle());
+            item.put("revenue", revenue);
+            item.put("salesCount", payments.size());
+            courseRevenues.add(item);
+        }
+
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("totalRevenue", totalRevenue);
+        result.put("courses", courseRevenues);
+        return ResponseEntity.ok(result);
+    }
+
     // ========== Request / Response DTOs ==========
 
     @Getter @Setter @NoArgsConstructor @AllArgsConstructor
     public static class CourseCreateRequest {
+        @NotBlank(message = "강좌 제목은 필수입니다.")
+        @Size(max = 200, message = "강좌 제목은 200자 이내여야 합니다.")
         private String title;
+
+        @Size(max = 2000, message = "강좌 설명은 2000자 이내여야 합니다.")
         private String description;
         private String category;
         private String level;
+
+        @Min(value = 0, message = "가격은 0 이상이어야 합니다.")
         private Integer price;
         private String thumbnailUrl;
+
+        @Valid
         private List<SectionRequest> sections;
     }
 
     @Getter @Setter @NoArgsConstructor @AllArgsConstructor
     public static class SectionRequest {
+        @NotBlank(message = "섹션 제목은 필수입니다.")
         private String title;
+
+        @Valid
         private List<LectureRequest> lectures;
     }
 
     @Getter @Setter @NoArgsConstructor @AllArgsConstructor
     public static class LectureRequest {
+        @NotBlank(message = "강의 제목은 필수입니다.")
         private String title;
         private String videoUrl;
+
+        @Min(value = 0, message = "재생 시간은 0 이상이어야 합니다.")
         private Integer playTime;
     }
 
@@ -472,103 +506,6 @@ public class TeacherController {
         private String category;
         private int studentCount;
         private int lectureCount;
-        private long revenue;
         private java.time.LocalDateTime createdAt;
-    }
-
-    // === 강좌 상세 통계 (강사용) ===
-    @GetMapping("/courses/{courseId}/stats")
-    public ResponseEntity<Map<String, Object>> getCourseStatsForTeacher(
-            @PathVariable Long courseId, Authentication authentication) {
-        Long memberId = (Long) authentication.getPrincipal();
-        Member teacher = memberRepository.findById(memberId)
-                .orElseThrow(() -> CustomException.notFound("사용자를 찾을 수 없습니다."));
-
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> CustomException.notFound("강좌를 찾을 수 없습니다."));
-
-        // 본인 강의인지 확인
-        if (!course.getInstructorName().equals(teacher.getFullName())) {
-            throw CustomException.badRequest("본인의 강의만 조회할 수 있습니다.");
-        }
-
-        List<Enrollment> enrollments = enrollmentRepository.findByCourseId(courseId);
-        long totalLectures = course.getSections().stream()
-                .mapToLong(s -> s.getLectures() != null ? s.getLectures().size() : 0)
-                .sum();
-
-        List<Map<String, Object>> students = new java.util.ArrayList<>();
-        double totalProgress = 0;
-
-        for (Enrollment enrollment : enrollments) {
-            Member student = enrollment.getMember();
-            List<LectureProgress> progresses = lectureProgressRepository
-                    .findByMemberIdAndCourseId(student.getId(), courseId);
-            int completedLectures = progresses.size();
-            double progressPercent = totalLectures > 0
-                    ? Math.round((double) completedLectures / totalLectures * 10000.0) / 100.0 : 0;
-            totalProgress += progressPercent;
-
-            java.util.Map<String, Object> info = new java.util.LinkedHashMap<>();
-            info.put("memberId", student.getId());
-            info.put("fullName", student.getFullName());
-            info.put("email", student.getEmail());
-            info.put("completedLectures", completedLectures);
-            info.put("totalLectures", totalLectures);
-            info.put("progressPercent", progressPercent);
-            info.put("enrolledAt", enrollment.getEnrolledAt());
-            students.add(info);
-        }
-
-        double avgProgress = enrollments.isEmpty() ? 0
-                : Math.round(totalProgress / enrollments.size() * 100.0) / 100.0;
-
-        List<Payment> payments = paymentRepository.findByCourseIdAndStatus(courseId, "SUCCESS");
-        long revenue = payments.stream().mapToLong(p -> p.getAmount()).sum();
-
-        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
-        result.put("courseId", course.getId());
-        result.put("title", course.getTitle());
-        result.put("category", course.getCategory());
-        result.put("instructorName", course.getInstructorName());
-        result.put("price", course.getPrice());
-        result.put("totalStudents", enrollments.size());
-        result.put("totalLectures", totalLectures);
-        result.put("avgProgress", avgProgress);
-        result.put("revenue", revenue);
-        result.put("salesCount", payments.size());
-        result.put("students", students);
-
-        return ResponseEntity.ok(result);
-    }
-
-    // === 강사 매출 ===
-    @GetMapping("/revenue")
-    public ResponseEntity<Map<String, Object>> getRevenue(Authentication authentication) {
-        Long memberId = (Long) authentication.getPrincipal();
-        Member teacher = memberRepository.findById(memberId)
-                .orElseThrow(() -> CustomException.notFound("사용자를 찾을 수 없습니다."));
-
-        long totalRevenue = paymentRepository.sumRevenueByInstructor(teacher.getFullName());
-
-        List<Map<String, Object>> courseRevenues = courseRepository.findByInstructorNameOrderByCreatedAtDesc(teacher.getFullName())
-                .stream()
-                .map(course -> {
-                    List<com.photolesson.backend.entity.Payment> payments =
-                            paymentRepository.findByCourseIdAndStatus(course.getId(), "SUCCESS");
-                    long courseRev = payments.stream().mapToLong(p -> p.getAmount()).sum();
-                    return Map.<String, Object>of(
-                            "courseId", course.getId(),
-                            "title", course.getTitle(),
-                            "price", course.getPrice() != null ? course.getPrice() : 0,
-                            "revenue", courseRev,
-                            "salesCount", payments.size()
-                    );
-                }).toList();
-
-        return ResponseEntity.ok(Map.of(
-                "totalRevenue", totalRevenue,
-                "courses", courseRevenues
-        ));
     }
 }

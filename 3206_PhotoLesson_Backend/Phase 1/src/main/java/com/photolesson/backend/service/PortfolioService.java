@@ -4,6 +4,7 @@ import com.photolesson.backend.dto.common.PageResponseDto;
 import com.photolesson.backend.dto.portfolio.*;
 import com.photolesson.backend.entity.*;
 import com.photolesson.backend.exception.CustomException;
+import com.photolesson.backend.util.FileUploadValidator;
 import com.photolesson.backend.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,6 +24,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class PortfolioService {
 
     private final PortfolioRepository portfolioRepository;
@@ -80,6 +82,8 @@ public class PortfolioService {
         Portfolio portfolio = portfolioRepository.findById(portfolioId)
                 .orElseThrow(() -> CustomException.notFound("포트폴리오를 찾을 수 없습니다."));
 
+        FileUploadValidator.validateImageFile(file);
+
         try {
             Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
             Files.createDirectories(uploadPath);
@@ -107,7 +111,7 @@ public class PortfolioService {
 
             return toPortfolioImageDto(image);
         } catch (IOException e) {
-            throw new RuntimeException("파일 업로드에 실패했습니다.", e);
+            throw CustomException.badRequest("파일 업로드에 실패했습니다.");
         }
     }
 

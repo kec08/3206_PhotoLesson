@@ -3,6 +3,7 @@ package com.photolesson.backend.controller;
 import com.photolesson.backend.dto.course.CourseDetailDto;
 import com.photolesson.backend.dto.lecture.*;
 import com.photolesson.backend.service.LectureService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -38,7 +39,7 @@ public class LectureController {
     @PostMapping("/lectures/{lectureId}/watch-history")
     public ResponseEntity<WatchHistoryResponse> saveWatchHistory(
             @PathVariable Long lectureId,
-            @RequestBody WatchHistoryRequest request,
+            @Valid @RequestBody WatchHistoryRequest request,
             Authentication authentication) {
 
         Long memberId = (Long) authentication.getPrincipal();

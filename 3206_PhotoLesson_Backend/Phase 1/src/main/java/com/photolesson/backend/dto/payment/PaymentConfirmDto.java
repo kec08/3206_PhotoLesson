@@ -1,5 +1,8 @@
 package com.photolesson.backend.dto.payment;
 
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.*;
 
 @Getter
@@ -7,7 +10,13 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 public class PaymentConfirmDto {
+    @NotBlank(message = "결제 키는 필수입니다.")
     private String paymentKey;
+
+    @NotBlank(message = "주문 ID는 필수입니다.")
     private String orderId;
+
+    @NotNull(message = "결제 금액은 필수입니다.")
+    @Min(value = 1, message = "결제 금액은 1원 이상이어야 합니다.")
     private Integer amount;
 }

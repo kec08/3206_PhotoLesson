@@ -175,15 +175,11 @@ struct PortfolioCard: View {
                         if let urlStr = firstImageUrl,
                            let fullUrl = APIService.shared.fullImageURL(urlStr),
                            let url = URL(string: fullUrl) {
-                            AsyncImage(url: url) { phase in
-                                switch phase {
-                                case .success(let img):
-                                    img.resizable().scaledToFill()
-                                default:
-                                    Color(.systemGray5)
-                                        .overlay { ProgressView() }
-                                }
+                            CachedAsyncImage(url: url) {
+                                Color(.systemGray5)
+                                    .overlay { ProgressView() }
                             }
+                            .scaledToFill()
                         } else {
                             Color(.systemGray5)
                                 .overlay {

@@ -4,10 +4,14 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @Entity
-@Table(name = "sections")
+@Table(name = "sections", indexes = {
+        @Index(name = "idx_section_course", columnList = "course_id")
+})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -32,5 +36,5 @@ public class Section {
     @OneToMany(mappedBy = "section", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @OrderBy("sortOrder ASC")
     @Builder.Default
-    private List<Lecture> lectures = new ArrayList<>();
+    private Set<Lecture> lectures = new LinkedHashSet<>();
 }

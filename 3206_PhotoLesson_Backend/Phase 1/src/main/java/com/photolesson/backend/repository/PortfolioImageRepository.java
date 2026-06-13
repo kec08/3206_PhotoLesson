@@ -7,6 +7,5 @@ import java.util.List;
 
 public interface PortfolioImageRepository extends JpaRepository<PortfolioImage, Long> {
     List<PortfolioImage> findByPortfolioIdOrderByUploadedAtDesc(Long portfolioId);
-    List<PortfolioImage> findByPortfolioId(Long portfolioId);
     long countByPortfolioId(Long portfolioId);
 }

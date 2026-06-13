@@ -1,6 +1,5 @@
 package com.photolesson.backend.controller;
 
-import com.photolesson.backend.dto.payment.PaymentDto;
 import com.photolesson.backend.dto.user.UserDto;
 import com.photolesson.backend.entity.*;
 import com.photolesson.backend.exception.CustomException;
@@ -10,11 +9,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-import java.util.Map;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @RestController
@@ -23,14 +22,12 @@ import java.util.stream.Collectors;
 public class AdminController {
 
     private final MemberRepository memberRepository;
-    private final LectureProgressRepository lectureProgressRepository;
-    private final EnrollmentRepository enrollmentRepository;
-    private final PortfolioImageRepository portfolioImageRepository;
-    private final PortfolioRepository portfolioRepository;
-    private final CommentRepository commentRepository;
-    private final PaymentRepository paymentRepository;
-    private final PaymentService paymentService;
     private final CourseRepository courseRepository;
+    private final PaymentRepository paymentRepository;
+    private final EnrollmentRepository enrollmentRepository;
+    private final LectureRepository lectureRepository;
+    private final LectureProgressRepository lectureProgressRepository;
+    private final PaymentService paymentService;
 
     @GetMapping("/users")
     public ResponseEntity<List<UserDto>> getAllUsers() {
@@ -64,28 +61,33 @@ public class AdminController {
         return ResponseEntity.ok(toDto(member));
     }
 
-    @Transactional
     @DeleteMapping("/users/{userId}")
     public ResponseEntity<Void> deleteUser(@PathVariable Long userId) {
         Member member = memberRepository.findById(userId)
                 .orElseThrow(() -> CustomException.notFound("사용자를 찾을 수 없습니다."));
-
-        // 관련 데이터 순서대로 삭제
-        lectureProgressRepository.deleteAll(lectureProgressRepository.findByMemberId(userId));
-        commentRepository.deleteAll(commentRepository.findByMemberId(userId));
-        portfolioRepository.findAllByMemberId(userId).forEach(p -> {
-            portfolioImageRepository.deleteAll(portfolioImageRepository.findByPortfolioId(p.getId()));
-        });
-        portfolioRepository.deleteAll(portfolioRepository.findAllByMemberId(userId));
-        enrollmentRepository.deleteAll(enrollmentRepository.findByMemberId(userId));
         memberRepository.delete(member);
-
         return ResponseEntity.noContent().build();
     }
 
-    // === 결제 관리 ===
+    // ========== 통계 API ==========
+
+    @GetMapping("/stats")
+    public ResponseEntity<Map<String, Object>> getStats() {
+        LocalDateTime todayStart = LocalDate.now().atStartOfDay();
+
+        Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put("totalUsers", memberRepository.count());
+        stats.put("totalCourses", courseRepository.count());
+        stats.put("totalPayments", paymentRepository.countByStatus("SUCCESS"));
+        stats.put("totalRevenue", paymentRepository.sumTotalRevenue());
+        stats.put("todayRevenue", paymentRepository.sumRevenueAfter(todayStart));
+        stats.put("todayPayments", paymentRepository.countByCreatedAtAfter(todayStart));
+
+        return ResponseEntity.ok(stats);
+    }
+
     @GetMapping("/payments")
-    public ResponseEntity<Page<PaymentDto>> getPayments(
+    public ResponseEntity<Page<?>> getPayments(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         return ResponseEntity.ok(paymentService.getAllPayments(PageRequest.of(page, size)));
@@ -94,108 +96,105 @@ public class AdminController {
     @PostMapping("/payments/{paymentId}/refund")
     public ResponseEntity<Void> refundPayment(@PathVariable Long paymentId) {
         paymentService.refundPayment(paymentId);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok().build();
     }
 
-    // === 통계 ===
-    @GetMapping("/stats")
-    public ResponseEntity<Map<String, Object>> getStats() {
-        java.time.LocalDateTime today = java.time.LocalDate.now().atStartOfDay();
-        Map<String, Object> stats = Map.of(
-                "totalUsers", memberRepository.count(),
-                "totalCourses", courseRepository.count(),
-                "totalPayments", paymentRepository.countByStatus("SUCCESS"),
-                "totalRevenue", paymentRepository.sumTotalRevenue(),
-                "todayRevenue", paymentRepository.sumRevenueAfter(today),
-                "todayPayments", paymentRepository.countByCreatedAtAfter(today)
-        );
-        return ResponseEntity.ok(stats);
-    }
-
-    // === 전체 강좌 대시보드 (수강생 포함) ===
     @GetMapping("/courses/dashboard")
     public ResponseEntity<List<Map<String, Object>>> getCoursesDashboard() {
         List<Course> courses = courseRepository.findAll();
-        List<Map<String, Object>> result = new java.util.ArrayList<>();
+        List<Map<String, Object>> result = new ArrayList<>();
 
         for (Course course : courses) {
             long studentCount = enrollmentRepository.countByCourseId(course.getId());
-            long lectureCount = course.getSections().stream()
-                    .mapToLong(s -> s.getLectures() != null ? s.getLectures().size() : 0)
-                    .sum();
-            long revenue = paymentRepository.findByCourseIdAndStatus(course.getId(), "SUCCESS")
-                    .stream().mapToLong(p -> p.getAmount()).sum();
+            long lectureCount = lectureRepository.countByCourseId(course.getId());
+            List<Payment> payments = paymentRepository.findByCourseIdAndStatus(course.getId(), "SUCCESS");
+            long revenue = payments.stream().mapToLong(Payment::getAmount).sum();
 
-            java.util.Map<String, Object> item = new java.util.LinkedHashMap<>();
+            Map<String, Object> item = new LinkedHashMap<>();
             item.put("courseId", course.getId());
-            item.put("title", course.getTitle());
-            item.put("category", course.getCategory());
+            item.put("courseTitle", course.getTitle());
             item.put("instructorName", course.getInstructorName());
-            item.put("price", course.getPrice());
-            item.put("studentCount", studentCount);
-            item.put("lectureCount", lectureCount);
+            item.put("totalStudents", studentCount);
+            item.put("totalLectures", lectureCount);
             item.put("revenue", revenue);
+            item.put("salesCount", payments.size());
             result.add(item);
         }
 
         return ResponseEntity.ok(result);
     }
 
-    // === 개별 강좌 통계 ===
     @GetMapping("/courses/{courseId}/stats")
     public ResponseEntity<Map<String, Object>> getCourseStats(@PathVariable Long courseId) {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> CustomException.notFound("강좌를 찾을 수 없습니다."));
 
         List<Enrollment> enrollments = enrollmentRepository.findByCourseId(courseId);
-        long totalLectures = course.getSections().stream()
-                .mapToLong(s -> s.getLectures() != null ? s.getLectures().size() : 0)
-                .sum();
+        long totalLectures = lectureRepository.countByCourseId(courseId);
+        List<Payment> payments = paymentRepository.findByCourseIdAndStatus(courseId, "SUCCESS");
+        long revenue = payments.stream().mapToLong(Payment::getAmount).sum();
 
-        // 수강생별 진도
-        List<Map<String, Object>> students = new java.util.ArrayList<>();
+        List<Map<String, Object>> students = new ArrayList<>();
         double totalProgress = 0;
 
         for (Enrollment enrollment : enrollments) {
-            Member member = enrollment.getMember();
-            List<LectureProgress> progresses = lectureProgressRepository
-                    .findByMemberIdAndCourseId(member.getId(), courseId);
-            int completedLectures = progresses.size();
+            Member student = enrollment.getMember();
+            List<LectureProgress> progress = lectureProgressRepository
+                    .findByMemberIdAndCourseId(student.getId(), courseId);
             double progressPercent = totalLectures > 0
-                    ? Math.round((double) completedLectures / totalLectures * 10000.0) / 100.0
+                    ? Math.round((double) progress.size() / totalLectures * 100.0 * 100.0) / 100.0
                     : 0;
             totalProgress += progressPercent;
 
-            java.util.Map<String, Object> studentInfo = new java.util.LinkedHashMap<>();
-            studentInfo.put("memberId", member.getId());
-            studentInfo.put("fullName", member.getFullName());
-            studentInfo.put("email", member.getEmail());
-            studentInfo.put("completedLectures", completedLectures);
-            studentInfo.put("totalLectures", totalLectures);
-            studentInfo.put("progressPercent", progressPercent);
-            studentInfo.put("enrolledAt", enrollment.getEnrolledAt());
-            students.add(studentInfo);
+            Map<String, Object> s = new LinkedHashMap<>();
+            s.put("userId", student.getId());
+            s.put("fullName", student.getFullName());
+            s.put("email", student.getEmail());
+            s.put("completedLectures", progress.size());
+            s.put("totalLectures", totalLectures);
+            s.put("progressPercent", progressPercent);
+            s.put("enrolledAt", enrollment.getEnrolledAt());
+            students.add(s);
         }
 
         double avgProgress = enrollments.isEmpty() ? 0
                 : Math.round(totalProgress / enrollments.size() * 100.0) / 100.0;
 
-        long revenue = paymentRepository.findByCourseIdAndStatus(courseId, "SUCCESS")
-                .stream().mapToLong(p -> p.getAmount()).sum();
-        long salesCount = paymentRepository.findByCourseIdAndStatus(courseId, "SUCCESS").size();
-
-        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
+        Map<String, Object> result = new LinkedHashMap<>();
         result.put("courseId", course.getId());
-        result.put("title", course.getTitle());
-        result.put("category", course.getCategory());
-        result.put("instructorName", course.getInstructorName());
-        result.put("price", course.getPrice());
+        result.put("courseTitle", course.getTitle());
         result.put("totalStudents", enrollments.size());
-        result.put("totalLectures", totalLectures);
         result.put("avgProgress", avgProgress);
         result.put("revenue", revenue);
-        result.put("salesCount", salesCount);
+        result.put("salesCount", payments.size());
         result.put("students", students);
+
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/report/monthly")
+    public ResponseEntity<List<Map<String, Object>>> getMonthlyReport() {
+        List<Payment> allSuccess = paymentRepository.findByCourseIdAndStatus(null, "SUCCESS");
+        // 전체 SUCCESS 결제를 월별로 그룹핑
+        List<Payment> successPayments = paymentRepository.findAll().stream()
+                .filter(p -> "SUCCESS".equals(p.getStatus()))
+                .toList();
+
+        Map<String, List<Payment>> byMonth = successPayments.stream()
+                .collect(Collectors.groupingBy(p ->
+                        p.getCreatedAt().getYear() + "-" +
+                        String.format("%02d", p.getCreatedAt().getMonthValue())));
+
+        List<Map<String, Object>> result = byMonth.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(entry -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("month", entry.getKey());
+                    m.put("totalRevenue", entry.getValue().stream().mapToLong(Payment::getAmount).sum());
+                    m.put("paymentCount", entry.getValue().size());
+                    return m;
+                })
+                .collect(Collectors.toList());
 
         return ResponseEntity.ok(result);
     }

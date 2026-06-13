@@ -9,14 +9,10 @@ struct CourseCardView: View {
             ZStack(alignment: .topLeading) {
                 if let fullUrl = APIService.shared.fullImageURL(course.thumbnailUrl),
                    let url = URL(string: fullUrl) {
-                    AsyncImage(url: url, transaction: Transaction(animation: nil)) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image.resizable().scaledToFill()
-                        default:
-                            thumbnailPlaceholder
-                        }
+                    CachedAsyncImage(url: url) {
+                        thumbnailPlaceholder
                     }
+                    .scaledToFill()
                 } else {
                     thumbnailPlaceholder
                 }

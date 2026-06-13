@@ -3,6 +3,7 @@ package com.photolesson.backend.controller;
 import com.photolesson.backend.dto.user.UserDto;
 import com.photolesson.backend.dto.user.UserUpdateRequest;
 import com.photolesson.backend.service.UserService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -23,7 +24,7 @@ public class UserController {
 
     @PutMapping("/{userId}")
     public ResponseEntity<UserDto> updateUser(@PathVariable Long userId,
-                                              @RequestBody UserUpdateRequest request) {
+                                              @Valid @RequestBody UserUpdateRequest request) {
         UserDto user = userService.updateUser(userId, request);
         return ResponseEntity.ok(user);
     }

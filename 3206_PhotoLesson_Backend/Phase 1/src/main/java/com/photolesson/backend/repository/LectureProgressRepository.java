@@ -18,5 +18,4 @@ public interface LectureProgressRepository extends JpaRepository<LectureProgress
     long countByMemberId(@Param("memberId") Long memberId);
 
     List<LectureProgress> findByMemberId(Long memberId);
-    List<LectureProgress> findByLectureId(Long lectureId);
 }

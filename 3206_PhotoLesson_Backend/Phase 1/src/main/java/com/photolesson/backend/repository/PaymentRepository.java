@@ -30,4 +30,6 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     long sumRevenueByInstructor(String instructorName);
 
     List<Payment> findByCourseIdAndStatus(Long courseId, String status);
+
+    List<Payment> findByStatusAndCreatedAtBefore(String status, LocalDateTime before);
 }

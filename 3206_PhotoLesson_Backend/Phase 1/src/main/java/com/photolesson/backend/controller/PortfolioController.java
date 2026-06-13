@@ -3,6 +3,7 @@ package com.photolesson.backend.controller;
 import com.photolesson.backend.dto.common.PageResponseDto;
 import com.photolesson.backend.dto.portfolio.*;
 import com.photolesson.backend.service.PortfolioService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -24,7 +25,7 @@ public class PortfolioController {
 
     @PostMapping
     public ResponseEntity<PortfolioDto> createPortfolio(
-            @RequestBody PortfolioCreateRequest request,
+            @Valid @RequestBody PortfolioCreateRequest request,
             Authentication authentication) {
 
         Long memberId = (Long) authentication.getPrincipal();

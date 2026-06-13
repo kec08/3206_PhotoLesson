@@ -146,11 +146,10 @@ struct MyPageView: View {
                     } else if let urlStr = user?.profileImageUrl,
                               let fullUrl = APIService.shared.fullImageURL(urlStr),
                               let url = URL(string: fullUrl) {
-                        AsyncImage(url: url) { image in
-                            image.resizable().scaledToFill()
-                        } placeholder: {
+                        CachedAsyncImage(url: url) {
                             profilePlaceholder
                         }
+                        .scaledToFill()
                         .frame(width: 70, height: 70)
                         .clipShape(Circle())
                     } else {
@@ -322,14 +321,10 @@ struct MyPageView: View {
                                 Color.clear
                                     .aspectRatio(1, contentMode: .fit)
                                     .overlay(
-                                        AsyncImage(url: url) { phase in
-                                            switch phase {
-                                            case .success(let img):
-                                                img.resizable().scaledToFill()
-                                            default:
-                                                Color(.systemGray5)
-                                            }
+                                        CachedAsyncImage(url: url) {
+                                            Color(.systemGray5)
                                         }
+                                        .scaledToFill()
                                     )
                                     .clipped()
                             } else {

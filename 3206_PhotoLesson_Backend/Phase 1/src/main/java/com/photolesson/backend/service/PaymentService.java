@@ -25,6 +25,7 @@ import java.util.UUID;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class PaymentService {
 
     private final PaymentRepository paymentRepository;
@@ -177,6 +178,73 @@ public class PaymentService {
             throw e;
         } catch (Exception e) {
             throw CustomException.badRequest("환불 처리 중 오류가 발생했습니다.");
+        }
+    }
+
+    @Transactional
+    public void handleWebhook(String body) {
+        try {
+            JsonNode data = objectMapper.readTree(body);
+            String eventType = data.has("eventType") ? data.get("eventType").asText() : "";
+            JsonNode paymentData = data.has("data") ? data.get("data") : null;
+
+            if (paymentData == null) {
+                log.warn("[Webhook] data 필드 없음: {}", body);
+                return;
+            }
+
+            String orderId = paymentData.has("orderId") ? paymentData.get("orderId").asText() : null;
+            if (orderId == null) {
+                log.warn("[Webhook] orderId 없음: {}", body);
+                return;
+            }
+
+            Payment payment = paymentRepository.findByOrderId(orderId).orElse(null);
+            if (payment == null) {
+                log.warn("[Webhook] 결제 정보 없음: orderId={}", orderId);
+                return;
+            }
+
+            switch (eventType) {
+                case "PAYMENT_STATUS_CHANGED" -> {
+                    String status = paymentData.has("status") ? paymentData.get("status").asText() : "";
+                    if ("DONE".equals(status) && "PENDING".equals(payment.getStatus())) {
+                        payment.setStatus("SUCCESS");
+                        payment.setPaymentKey(
+                                paymentData.has("paymentKey") ? paymentData.get("paymentKey").asText() : null);
+                        payment.setMethod(
+                                paymentData.has("method") ? paymentData.get("method").asText() : null);
+                        paymentRepository.save(payment);
+
+                        if (!enrollmentRepository.existsByMemberIdAndCourseId(
+                                payment.getMember().getId(), payment.getCourse().getId())) {
+                            Enrollment enrollment = Enrollment.builder()
+                                    .member(payment.getMember())
+                                    .course(payment.getCourse())
+                                    .build();
+                            enrollmentRepository.save(enrollment);
+                        }
+                        log.info("[Webhook] 결제 승인: orderId={}", orderId);
+
+                    } else if ("CANCELED".equals(status)) {
+                        payment.setStatus("REFUNDED");
+                        paymentRepository.save(payment);
+                        enrollmentRepository.findByMemberIdAndCourseId(
+                                payment.getMember().getId(), payment.getCourse().getId()
+                        ).ifPresent(enrollmentRepository::delete);
+                        log.info("[Webhook] 결제 취소: orderId={}", orderId);
+
+                    } else if ("ABORTED".equals(status) || "EXPIRED".equals(status)) {
+                        payment.setStatus("FAILED");
+                        payment.setFailReason("Webhook: " + status);
+                        paymentRepository.save(payment);
+                        log.info("[Webhook] 결제 실패: orderId={}, status={}", orderId, status);
+                    }
+                }
+                default -> log.info("[Webhook] 미처리 이벤트: eventType={}", eventType);
+            }
+        } catch (Exception e) {
+            log.error("[Webhook] 처리 오류", e);
         }
     }
 

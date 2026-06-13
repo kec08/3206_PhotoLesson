@@ -2,6 +2,7 @@ package com.photolesson.backend.controller;
 
 import com.photolesson.backend.dto.enrollment.*;
 import com.photolesson.backend.service.EnrollmentService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -19,7 +20,7 @@ public class EnrollmentController {
 
     @PostMapping("/enrollments")
     public ResponseEntity<EnrollmentResponse> enroll(
-            @RequestBody EnrollmentRequest request,
+            @Valid @RequestBody EnrollmentRequest request,
             Authentication authentication) {
 
         Long memberId = (Long) authentication.getPrincipal();

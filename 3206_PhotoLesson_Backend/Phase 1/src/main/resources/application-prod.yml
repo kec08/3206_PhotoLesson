@@ -30,3 +30,19 @@ file:
 toss:
   client-key: ${TOSS_CLIENT_KEY:test_ck_test}
   secret-key: ${TOSS_SECRET_KEY:test_sk_test}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+
+logging:
+  level:
+    root: INFO
+    com.photolesson.backend: INFO
+    org.hibernate.SQL: WARN
+    org.springframework.security: WARN

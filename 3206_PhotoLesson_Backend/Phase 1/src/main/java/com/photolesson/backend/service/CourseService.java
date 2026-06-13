@@ -55,10 +55,10 @@ public class CourseService {
     }
 
     public CourseDetailDto getCourseDetail(Long courseId, Long memberId) {
-        Course course = courseRepository.findById(courseId)
+        Course course = courseRepository.findByIdWithSections(courseId)
                 .orElseThrow(() -> CustomException.notFound("강좌를 찾을 수 없습니다."));
 
-        List<Section> sections = sectionRepository.findByCourseIdOrderBySortOrderAsc(courseId);
+        var sections = course.getSections();
 
         List<CourseDetailDto.SectionDto> sectionDtos = sections.stream()
                 .map(section -> {

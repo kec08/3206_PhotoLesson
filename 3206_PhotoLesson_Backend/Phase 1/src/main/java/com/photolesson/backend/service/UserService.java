@@ -4,6 +4,7 @@ import com.photolesson.backend.dto.user.UserDto;
 import com.photolesson.backend.dto.user.UserUpdateRequest;
 import com.photolesson.backend.entity.Member;
 import com.photolesson.backend.exception.CustomException;
+import com.photolesson.backend.util.FileUploadValidator;
 import com.photolesson.backend.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,6 +20,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class UserService {
 
     private final MemberRepository memberRepository;
@@ -54,6 +56,8 @@ public class UserService {
         Member member = memberRepository.findById(userId)
                 .orElseThrow(() -> CustomException.notFound("사용자를 찾을 수 없습니다."));
 
+        FileUploadValidator.validateImageFile(file);
+
         try {
             Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
             Files.createDirectories(uploadPath);
@@ -81,7 +85,7 @@ public class UserService {
 
             return toUserDto(member);
         } catch (IOException e) {
-            throw new RuntimeException("프로필 이미지 업로드에 실패했습니다.", e);
+            throw CustomException.badRequest("프로필 이미지 업로드에 실패했습니다.");
         }
     }
 

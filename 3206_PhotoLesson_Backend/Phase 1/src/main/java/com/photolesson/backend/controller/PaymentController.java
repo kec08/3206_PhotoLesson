@@ -2,6 +2,7 @@ package com.photolesson.backend.controller;
 
 import com.photolesson.backend.dto.payment.*;
 import com.photolesson.backend.service.PaymentService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -21,14 +22,14 @@ public class PaymentController {
 
     @PostMapping("/request")
     public ResponseEntity<PaymentResponseDto> requestPayment(
-            @RequestBody PaymentRequestDto request,
+            @Valid @RequestBody PaymentRequestDto request,
             Authentication authentication) {
         Long memberId = (Long) authentication.getPrincipal();
         return ResponseEntity.ok(paymentService.requestPayment(memberId, request));
     }
 
     @PostMapping("/confirm")
-    public ResponseEntity<PaymentDto> confirmPayment(@RequestBody PaymentConfirmDto request) {
+    public ResponseEntity<PaymentDto> confirmPayment(@Valid @RequestBody PaymentConfirmDto request) {
         return ResponseEntity.ok(paymentService.confirmPayment(request));
     }
 
@@ -40,7 +41,7 @@ public class PaymentController {
 
     @PostMapping("/webhook")
     public ResponseEntity<Void> webhook(@RequestBody String body) {
-        // Toss Payments webhook endpoint
+        paymentService.handleWebhook(body);
         return ResponseEntity.ok().build();
     }
 }

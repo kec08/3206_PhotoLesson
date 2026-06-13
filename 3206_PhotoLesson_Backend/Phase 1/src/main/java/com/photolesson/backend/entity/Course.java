@@ -6,10 +6,15 @@ import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @Entity
-@Table(name = "courses")
+@Table(name = "courses", indexes = {
+        @Index(name = "idx_course_category", columnList = "category"),
+        @Index(name = "idx_course_instructor", columnList = "instructor_name")
+})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -48,5 +53,5 @@ public class Course {
     @OneToMany(mappedBy = "course", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @OrderBy("sortOrder ASC")
     @Builder.Default
-    private List<Section> sections = new ArrayList<>();
+    private Set<Section> sections = new LinkedHashSet<>();
 }
