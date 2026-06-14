@@ -75,7 +75,7 @@
 		BC98A18E2F684C1B0096CFE4 = {
 			isa = PBXGroup;
 			children = (
-				BC98A1C22F684C7E0096CFE4 /* Phase 1 */,
+				BC98A1C22F684C7E0096CFE4 /* PhotoLesson */,
 				BC98A1A72F684C1C0096CFE4 /* 3206_PhotoLessonTests */,
 				BC98A1B12F684C1C0096CFE4 /* 3206_PhotoLessonUITests */,
 				BC98A1982F684C1B0096CFE4 /* Products */,
@@ -92,12 +92,12 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		BC98A1C22F684C7E0096CFE4 /* Phase 1 */ = {
+		BC98A1C22F684C7E0096CFE4 /* PhotoLesson */ = {
 			isa = PBXGroup;
 			children = (
 				BC98A1992F684C1B0096CFE4 /* 3206_PhotoLesson */,
 			);
-			path = "Phase 1";
+			path = PhotoLesson;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */

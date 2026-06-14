@@ -112,9 +112,12 @@ public class AdminController {
 
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("courseId", course.getId());
+            item.put("title", course.getTitle());
             item.put("courseTitle", course.getTitle());
             item.put("instructorName", course.getInstructorName());
+            item.put("studentCount", studentCount);
             item.put("totalStudents", studentCount);
+            item.put("lectureCount", lectureCount);
             item.put("totalLectures", lectureCount);
             item.put("revenue", revenue);
             item.put("salesCount", payments.size());
