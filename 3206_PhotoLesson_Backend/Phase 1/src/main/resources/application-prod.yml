@@ -35,10 +35,12 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,logfile
   endpoint:
     health:
       show-details: when-authorized
+    logfile:
+      external-file: /home/ec2-user/photolesson/logs/application.log
 
 logging:
   level:
